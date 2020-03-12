@@ -76,6 +76,12 @@ type Request
     | Success
 
 
+type alias News =
+    { title : String
+    , fileId : Int
+    }
+
+
 type Reason
     = Unauthorized
     | Other String
@@ -101,6 +107,82 @@ obtainToken email password =
         , body = Http.jsonBody (encodeRequestBody email password)
         , expect = Http.expectJson GotToken decodeAuthResult
         }
+
+
+
+-- loadNews : Cmd Msg
+-- loadNews =
+--     Http.request
+--         { method = "GET"
+--         , headers = []
+--         , url = "https://example.com/publish"
+--
+--         -- , body = Http.fileBody file
+--         , expect = Http.expectJson GotNews decodeNewsList
+--         , timeout = Nothing
+--         , tracker = Nothing
+--         }
+--
+-- [
+--   {
+--     "id": 3,
+--     "fileId": 27,
+--     "title": "The coronavirus outbreak (2019 nCoV) explaine",
+--     "description": "The mechanism of action for 2019 novel coronavirus is unknown yet.",
+--     "templateId": 0,
+--     "duration": 214000,
+--     "views": 0,
+--     "thumbnail": 6,
+--     "userId": 19,
+--     "username": "Nuzable ",
+--     "avatar": null,
+--     "start": 0,
+--     "end": 0,
+--     "createdDate": 1583769532000,
+--     "updatedDate": 1583712000000,
+--     "categoryId": 8,
+--     "liked": false,
+--     "tickerEnabled": false,
+--     "likes": 2,
+--     "commentsCount": 0,
+--     "anonymous": false
+--   },
+--   {
+--     "id": 4,
+--     "fileId": 28,
+--     "title": "How easily a virus spreads",
+--     "description": "About the virus, it’s spread and risks.",
+--     "templateId": 0,
+--     "duration": 511000,
+--     "views": 0,
+--     "thumbnail": 7,
+--     "userId": 19,
+--     "username": "Nuzable ",
+--     "avatar": null,
+--     "start": 0,
+--     "end": 0,
+--     "createdDate": 1583769532000,
+--     "updatedDate": 1583712000000,
+--     "categoryId": 1,
+--     "liked": false,
+--     "tickerEnabled": false,
+--     "likes": 2,
+--     "commentsCount": 0,
+--     "anonymous": false
+--   }
+-- ]
+
+
+decodeNewsList : D.Decoder (List News)
+decodeNewsList =
+    D.list decodeNews
+
+
+decodeNews : D.Decoder News
+decodeNews =
+    D.map2 News
+        (D.field "title" D.string)
+        (D.field "fileId" D.int)
 
 
 decodeAuthResult : D.Decoder AuthResult
@@ -138,6 +220,7 @@ type Msg
     | SignIn
     | SignOut
     | GotToken (Result Http.Error AuthResult)
+    | GotNews (Result Http.Error (List News))
     | AlertMsg Alert.Visibility
     | LoadAuth E.Value
 
