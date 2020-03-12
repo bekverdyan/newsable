@@ -11,7 +11,6 @@ import Bootstrap.Grid.Row as Row
 import Bootstrap.ListGroup as ListGroup
 import Bootstrap.Utilities.Spacing as Spacing
 import Browser
-import Debug
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
@@ -458,7 +457,19 @@ videoPlayer source =
                 ]
                 []
             ]
-        , div [] []
+        , div
+            []
+            [ Button.button
+                [ Button.success
+                , Button.attrs [ Spacing.ml1 ]
+                ]
+                [ text "Accept" ]
+            , Button.button
+                [ Button.danger
+                , Button.attrs [ Spacing.ml1 ]
+                ]
+                [ text "Reject" ]
+            ]
         ]
 
 
