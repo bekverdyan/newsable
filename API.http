@@ -1,0 +1,23 @@
+@host = http://3.120.74.192:9090/rest
+@token = {{obtainToken.response.body.$.authToken}}
+
+# @name obtainToken
+POST {{host}}/authentication
+Content-Type: application/json
+
+{
+  "email" : "tmp-email-1583153349316@mail.ru",
+  "password" : "tmpPassword"
+}​​
+
+###
+GET {{host}}/news?count=10
+Content-Type: application/json
+Authorization: {{token}}
+
+{}
+
+###
+GET {{host}}/api/users/list
+Content-Type: application/json
+Authorization: {{token}}

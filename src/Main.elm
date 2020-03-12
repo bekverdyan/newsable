@@ -8,11 +8,13 @@ import Bootstrap.Form.InputGroup as InputGroup
 import Bootstrap.Grid as Grid
 import Bootstrap.Grid.Col as Col
 import Bootstrap.Grid.Row as Row
+import Bootstrap.ListGroup as ListGroup
 import Bootstrap.Utilities.Spacing as Spacing
 import Browser
 import Debug
 import Html exposing (..)
 import Html.Attributes exposing (..)
+import Html.Events exposing (..)
 import Http
 import Json.Decode as D
 import Json.Encode as E
@@ -37,10 +39,14 @@ port saveAuth : E.Value -> Cmd msg
 port loadAuth : (E.Value -> msg) -> Sub msg
 
 
+port loadNews : (E.Value -> msg) -> Sub msg
+
+
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ loadAuth LoadAuth
+        , loadNews LoadNews
         ]
 
 
@@ -66,7 +72,14 @@ type alias Model =
     { credentials : Credentials
     , request : Request
     , alertVisibility : Alert.Visibility
+    , news : List News
+    , player : Player
     }
+
+
+type Player
+    = Initial
+    | Source String
 
 
 type Request
@@ -79,6 +92,7 @@ type Request
 type alias News =
     { title : String
     , fileId : Int
+    , source : String
     }
 
 
@@ -96,6 +110,8 @@ init _ =
         }
         NotSentYet
         Alert.closed
+        []
+        Initial
     , Cmd.none
     )
 
@@ -109,68 +125,25 @@ obtainToken email password =
         }
 
 
+getNews : String -> Cmd Msg
+getNews token =
+    Http.request
+        { method = "GET"
+        , headers = headers token
+        , url = "http://3.120.74.192:9090/rest/news"
+        , body = Http.jsonBody (E.object [])
+        , expect = Http.expectJson GotNews decodeNewsList
+        , timeout = Nothing
+        , tracker = Nothing
+        }
 
--- loadNews : Cmd Msg
--- loadNews =
---     Http.request
---         { method = "GET"
---         , headers = []
---         , url = "https://example.com/publish"
---
---         -- , body = Http.fileBody file
---         , expect = Http.expectJson GotNews decodeNewsList
---         , timeout = Nothing
---         , tracker = Nothing
---         }
---
--- [
---   {
---     "id": 3,
---     "fileId": 27,
---     "title": "The coronavirus outbreak (2019 nCoV) explaine",
---     "description": "The mechanism of action for 2019 novel coronavirus is unknown yet.",
---     "templateId": 0,
---     "duration": 214000,
---     "views": 0,
---     "thumbnail": 6,
---     "userId": 19,
---     "username": "Nuzable ",
---     "avatar": null,
---     "start": 0,
---     "end": 0,
---     "createdDate": 1583769532000,
---     "updatedDate": 1583712000000,
---     "categoryId": 8,
---     "liked": false,
---     "tickerEnabled": false,
---     "likes": 2,
---     "commentsCount": 0,
---     "anonymous": false
---   },
---   {
---     "id": 4,
---     "fileId": 28,
---     "title": "How easily a virus spreads",
---     "description": "About the virus, it’s spread and risks.",
---     "templateId": 0,
---     "duration": 511000,
---     "views": 0,
---     "thumbnail": 7,
---     "userId": 19,
---     "username": "Nuzable ",
---     "avatar": null,
---     "start": 0,
---     "end": 0,
---     "createdDate": 1583769532000,
---     "updatedDate": 1583712000000,
---     "categoryId": 1,
---     "liked": false,
---     "tickerEnabled": false,
---     "likes": 2,
---     "commentsCount": 0,
---     "anonymous": false
---   }
--- ]
+
+headers : String -> List Http.Header
+headers token =
+    [ Http.header "Content-Type" "application/json"
+    , Http.header "Authorization" token
+    , Http.header "Access-Control-Allow-Origin" "*"
+    ]
 
 
 decodeNewsList : D.Decoder (List News)
@@ -180,9 +153,23 @@ decodeNewsList =
 
 decodeNews : D.Decoder News
 decodeNews =
-    D.map2 News
+    D.map3 News
         (D.field "title" D.string)
         (D.field "fileId" D.int)
+        (D.field "source" D.string)
+
+
+encodeNewsList : List News -> E.Value
+encodeNewsList news =
+    E.list encodeNews news
+
+
+encodeNews : News -> E.Value
+encodeNews news =
+    E.object
+        [ ( "title", E.string news.title )
+        , ( "fileId", E.int news.fileId )
+        ]
 
 
 decodeAuthResult : D.Decoder AuthResult
@@ -223,6 +210,8 @@ type Msg
     | GotNews (Result Http.Error (List News))
     | AlertMsg Alert.Visibility
     | LoadAuth E.Value
+    | LoadNews E.Value
+    | PlayVideo String
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -268,7 +257,15 @@ update msg model =
             ( { model | alertVisibility = visibility }, Cmd.none )
 
         GotToken response ->
-            handleResponse response model
+            handleAuthResponse response model
+
+        GotNews response ->
+            ( { model
+                | news =
+                    handleNewsResponse response
+              }
+            , Cmd.none
+            )
 
         LoadAuth encoded ->
             let
@@ -295,9 +292,37 @@ update msg model =
             , Cmd.none
             )
 
+        LoadNews encoded ->
+            let
+                result =
+                    D.decodeValue decodeNewsList encoded
 
-handleResponse : Result Http.Error AuthResult -> Model -> ( Model, Cmd Msg )
-handleResponse response model =
+                news =
+                    case result of
+                        Ok value ->
+                            value
+
+                        Err reason ->
+                            []
+            in
+            ( { model | news = news }, Cmd.none )
+
+        PlayVideo source ->
+            ( { model | player = Source source }, Cmd.none )
+
+
+handleNewsResponse : Result Http.Error (List News) -> List News
+handleNewsResponse response =
+    case response of
+        Ok news ->
+            news
+
+        Err error ->
+            []
+
+
+handleAuthResponse : Result Http.Error AuthResult -> Model -> ( Model, Cmd Msg )
+handleAuthResponse response model =
     case response of
         Ok authResult ->
             let
@@ -312,7 +337,10 @@ handleResponse response model =
                 , credentials = { credentials | token = Just token }
                 , alertVisibility = Alert.closed
               }
-            , saveAuth <| encodeAuthResult authResult
+            , Cmd.batch
+                [ saveAuth <| encodeAuthResult authResult
+                , getNews token
+                ]
             )
 
         Err error ->
@@ -400,11 +428,59 @@ viewAdmin model =
                 ]
             ]
         , Grid.row []
-            [ Grid.col [] [ text "1 of 3" ]
-            , Grid.col [] [ text "2 of 3" ]
-            , Grid.col [] [ text "3 of 3" ]
+            [ Grid.col
+                []
+                [ ListGroup.custom <|
+                    List.map viewNews model.news
+                ]
+            , Grid.col
+                []
+                [ case model.player of
+                    Initial ->
+                        viewHelpText
+
+                    Source video ->
+                        videoPlayer video
+                ]
             ]
         ]
+
+
+videoPlayer : String -> Html Msg
+videoPlayer source =
+    div []
+        [ div []
+            [ video
+                [ width 320
+                , height 240
+                , autoplay True
+                , src source
+                ]
+                []
+            ]
+        , div [] []
+        ]
+
+
+viewHelpText : Html Msg
+viewHelpText =
+    div []
+        [ h3 []
+            [ text <|
+                "Click to one of the"
+                    ++ " videos listed in the"
+                    ++ " left to play it !"
+            ]
+        ]
+
+
+viewNews : News -> ListGroup.CustomItem Msg
+viewNews news =
+    ListGroup.button
+        [ ListGroup.primary
+        , ListGroup.attrs [ onClick (PlayVideo news.source) ]
+        ]
+        [ text news.title ]
 
 
 viewSignIn : Model -> Html Msg

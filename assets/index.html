@@ -1,11 +1,12 @@
 <!DOCTYPE HTML>
 <html>
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 
   <link rel="stylesheet" href="css/bootstrap.css">
-  <script src="login.js"></script>
+  <script src="newsable.js"></script>
 </head>
 
 <body>
@@ -13,19 +14,99 @@
     <div id="elm"></div>
   </div>
   <script>
-  var app = Elm.Main.init({
-    node: document.getElementById('elm')
-  });
+    var app = Elm.Main.init({
+      node: document.getElementById('elm')
+    });
 
-  app.ports.saveAuth.subscribe(function(data) {
-    console.log('Eheheeey: ' + JSON.stringify(data));
-    localStorage.setItem('auth', JSON.stringify(data));
-  });
+    app.ports.saveAuth.subscribe(function (data) {
+      localStorage.setItem('auth', JSON.stringify(data));
+    });
 
-  var auth = localStorage.getItem('auth');
-  var parsedAuth = auth ? JSON.parse(auth) : null;
+    var auth = localStorage.getItem('auth');
+    var parsedAuth = auth ? JSON.parse(auth) : null;
+    var news = localStorage.getItem('news');
+    var parsedNews = news ? JSON.parse(news) : null;
 
-  app.ports.loadAuth.send(parsedAuth);
+    app.ports.loadAuth.send(parsedAuth);
+    app.ports.loadNews.send(parsedNews);
+
+    const staticData = [
+      {
+        "id": 2,
+        "fileId": 24,
+        "title": "What is CORONAVIRUS AND How to PROTECT YOURSE",
+        "description": "Coronavirus symptoms and protection from the virus",
+        "source": "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+        "templateId": 0,
+        "duration": 119000,
+        "views": 0,
+        "thumbnail": 5,
+        "userId": 19,
+        "username": "Nuzable ",
+        "avatar": null,
+        "start": 0,
+        "end": 0,
+        "createdDate": 1583769532000,
+        "updatedDate": 1583712000000,
+        "categoryId": 8,
+        "liked": false,
+        "tickerEnabled": false,
+        "likes": 2,
+        "commentsCount": 0,
+        "anonymous": false
+      },
+      {
+        "id": 3,
+        "fileId": 27,
+        "title": "The coronavirus outbreak (2019 nCoV) explaine",
+        "description": "The mechanism of action for 2019 novel coronavirus is unknown yet.",
+        "source": "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+        "templateId": 0,
+        "duration": 214000,
+        "views": 0,
+        "thumbnail": 6,
+        "userId": 19,
+        "username": "Nuzable ",
+        "avatar": null,
+        "start": 0,
+        "end": 0,
+        "createdDate": 1583769532000,
+        "updatedDate": 1583712000000,
+        "categoryId": 8,
+        "liked": false,
+        "tickerEnabled": false,
+        "likes": 2,
+        "commentsCount": 0,
+        "anonymous": false
+      },
+      {
+        "id": 4,
+        "fileId": 28,
+        "title": "How easily a virus spreads",
+        "description": "About the virus, it’s spread and risks.",
+        "source": "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+        "templateId": 0,
+        "duration": 511000,
+        "views": 0,
+        "thumbnail": 7,
+        "userId": 19,
+        "username": "Nuzable ",
+        "avatar": null,
+        "start": 0,
+        "end": 0,
+        "createdDate": 1583769532000,
+        "updatedDate": 1583712000000,
+        "categoryId": 1,
+        "liked": false,
+        "tickerEnabled": false,
+        "likes": 2,
+        "commentsCount": 0,
+        "anonymous": false
+      }
+    ];
+
+    localStorage.setItem('news', JSON.stringify(staticData));
   </script>
 </body>
+
 </html>
