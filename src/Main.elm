@@ -136,6 +136,7 @@ type Msg
     = InputEmail String
     | InputPassword String
     | SignIn
+    | SignOut
     | GotToken (Result Http.Error AuthResult)
     | AlertMsg Alert.Visibility
     | LoadAuth E.Value
@@ -161,6 +162,23 @@ update msg model =
         SignIn ->
             ( { model | alertVisibility = Alert.closed }
             , obtainToken model.credentials.email model.credentials.password
+            )
+
+        SignOut ->
+            let
+                credentials =
+                    model.credentials
+
+                emptyAuth =
+                    E.object [ ( "status", E.string "Unauthorized" ) ]
+            in
+            ( { model
+                | credentials =
+                    { credentials
+                        | token = Nothing
+                    }
+              }
+            , saveAuth emptyAuth
             )
 
         AlertMsg visibility ->
@@ -275,10 +293,35 @@ view : Model -> Html Msg
 view model =
     case model.credentials.token of
         Just token ->
-            text "GAGO"
+            viewAdmin model
 
         Nothing ->
             viewSignIn model
+
+
+viewAdmin : Model -> Html Msg
+viewAdmin model =
+    Grid.container []
+        [ Grid.row []
+            [ Grid.col [] []
+            , Grid.col []
+                [ div []
+                    [ Button.button
+                        [ Button.warning
+                        , Button.attrs
+                            [ Spacing.ml1 ]
+                        , Button.onClick SignOut
+                        ]
+                        [ text "Sign out" ]
+                    ]
+                ]
+            ]
+        , Grid.row []
+            [ Grid.col [] [ text "1 of 3" ]
+            , Grid.col [] [ text "2 of 3" ]
+            , Grid.col [] [ text "3 of 3" ]
+            ]
+        ]
 
 
 viewSignIn : Model -> Html Msg
