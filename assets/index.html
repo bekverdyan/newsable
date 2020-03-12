@@ -17,13 +17,15 @@
     node: document.getElementById('elm')
   });
 
-  app.ports.auth.subscribe(function(data) {
-    console.log('Eheheeey: ' + JSON.stringify(data))
+  app.ports.saveAuth.subscribe(function(data) {
+    console.log('Eheheeey: ' + JSON.stringify(data));
+    localStorage.setItem('auth', JSON.stringify(data));
   });
 
-  app.ports.navigateTo.subscribe(function(data) {
-    console.log('Hey i forgot my password ' + JSON.stringify(data))
-  });
+  var auth = localStorage.getItem('auth');
+  var parsedAuth = auth ? JSON.parse(auth) : null;
+
+  app.ports.loadAuth.send(parsedAuth);
   </script>
 </body>
 </html>

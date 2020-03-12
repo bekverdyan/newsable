@@ -23,7 +23,7 @@ main =
         { init = init
         , update = update
         , view = view
-        , subscriptions = always Sub.none
+        , subscriptions = subscriptions
         }
 
 
@@ -31,10 +31,17 @@ main =
 -- PORT
 
 
-port auth : E.Value -> Cmd msg
+port saveAuth : E.Value -> Cmd msg
 
 
-port navigateTo : E.Value -> Cmd msg
+port loadAuth : (E.Value -> msg) -> Sub msg
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.batch
+        [ loadAuth LoadAuth
+        ]
 
 
 
@@ -48,13 +55,15 @@ type alias AuthResult =
     }
 
 
-type alias Role =
-    ( String, Bool )
+type alias Credentials =
+    { email : String
+    , password : String
+    , token : Maybe String
+    }
 
 
 type alias Model =
-    { email : String
-    , password : String
+    { credentials : Credentials
     , request : Request
     , alertVisibility : Alert.Visibility
     }
@@ -74,7 +83,13 @@ type Reason
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model "" "" NotSentYet Alert.closed
+    ( Model
+        { email = ""
+        , password = ""
+        , token = Nothing
+        }
+        NotSentYet
+        Alert.closed
     , Cmd.none
     )
 
@@ -88,21 +103,12 @@ obtainToken email password =
         }
 
 
-
--- TODO IMPLEMENT ME
-
-
 decodeAuthResult : D.Decoder AuthResult
 decodeAuthResult =
     D.map3 AuthResult
         (D.field "authToken" D.string)
         (D.field "expires" D.string)
         (D.field "isFirstLogin" D.bool)
-
-
-decodeRole : D.Decoder (List ( String, Bool ))
-decodeRole =
-    D.keyValuePairs D.bool
 
 
 encodeAuthResult : AuthResult -> E.Value
@@ -112,12 +118,6 @@ encodeAuthResult authResult =
         , ( "expires", E.string authResult.expires )
         , ( "isFirstLogin", E.bool authResult.isFirstLogin )
         ]
-
-
-encodeRole : Role -> E.Value
-encodeRole ( name, indicator ) =
-    E.object
-        [ ( name, E.bool indicator ) ]
 
 
 encodeRequestBody : String -> String -> E.Value
@@ -138,20 +138,29 @@ type Msg
     | SignIn
     | GotToken (Result Http.Error AuthResult)
     | AlertMsg Alert.Visibility
+    | LoadAuth E.Value
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         InputEmail email ->
-            ( { model | email = email }, Cmd.none )
+            let
+                credentials =
+                    model.credentials
+            in
+            ( { model | credentials = { credentials | email = email } }, Cmd.none )
 
         InputPassword password ->
-            ( { model | password = password }, Cmd.none )
+            let
+                credentials =
+                    model.credentials
+            in
+            ( { model | credentials = { credentials | password = password } }, Cmd.none )
 
         SignIn ->
             ( { model | alertVisibility = Alert.closed }
-            , obtainToken model.email model.password
+            , obtainToken model.credentials.email model.credentials.password
             )
 
         AlertMsg visibility ->
@@ -160,16 +169,49 @@ update msg model =
         GotToken response ->
             handleResponse response model
 
+        LoadAuth encoded ->
+            let
+                authResult =
+                    D.decodeValue
+                        decodeAuthResult
+                        encoded
+
+                token =
+                    case authResult of
+                        Ok result ->
+                            Just result.authToken
+
+                        Err _ ->
+                            Nothing
+
+                credentials =
+                    model.credentials
+            in
+            ( { model
+                | credentials =
+                    { credentials | token = token }
+              }
+            , Cmd.none
+            )
+
 
 handleResponse : Result Http.Error AuthResult -> Model -> ( Model, Cmd Msg )
 handleResponse response model =
     case response of
         Ok authResult ->
+            let
+                token =
+                    authResult.authToken
+
+                credentials =
+                    model.credentials
+            in
             ( { model
                 | request = Success
+                , credentials = { credentials | token = Just token }
                 , alertVisibility = Alert.closed
               }
-            , auth <| encodeAuthResult authResult
+            , saveAuth <| encodeAuthResult authResult
             )
 
         Err error ->
@@ -231,6 +273,16 @@ handleStatusCode code model =
 
 view : Model -> Html Msg
 view model =
+    case model.credentials.token of
+        Just token ->
+            text "GAGO"
+
+        Nothing ->
+            viewSignIn model
+
+
+viewSignIn : Model -> Html Msg
+viewSignIn model =
     div []
         [ Alert.config
             |> Alert.warning
@@ -249,7 +301,10 @@ view model =
                         [ Form.group []
                             [ InputGroup.config
                                 (InputGroup.email <|
-                                    viewInput model.request "email" model.email InputEmail
+                                    viewInput model.request
+                                        "email"
+                                        model.credentials.email
+                                        InputEmail
                                 )
                                 |> InputGroup.predecessors
                                     [ InputGroup.span [] [ text "@" ] ]
@@ -258,7 +313,10 @@ view model =
                         , Form.group []
                             [ InputGroup.config
                                 (InputGroup.password <|
-                                    viewInput model.request "password" model.password InputPassword
+                                    viewInput model.request
+                                        "password"
+                                        model.credentials.password
+                                        InputPassword
                                 )
                                 |> InputGroup.predecessors
                                     [ InputGroup.span [] [ text "*" ] ]
