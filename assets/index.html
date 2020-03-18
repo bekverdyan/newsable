@@ -28,84 +28,81 @@
     var parsedNews = news ? JSON.parse(news) : null;
 
     app.ports.loadAuth.send(parsedAuth);
-    app.ports.loadNews.send(parsedNews);
 
-    const staticData = [
-      {
-        "id": 2,
-        "fileId": 24,
-        "title": "What is CORONAVIRUS AND How to PROTECT YOURSE",
-        "description": "Coronavirus symptoms and protection from the virus",
-        "source": "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-        "templateId": 0,
-        "duration": 119000,
-        "views": 0,
-        "thumbnail": 5,
-        "userId": 19,
-        "username": "Nuzable ",
-        "avatar": null,
-        "start": 0,
-        "end": 0,
-        "createdDate": 1583769532000,
-        "updatedDate": 1583712000000,
-        "categoryId": 8,
-        "liked": false,
-        "tickerEnabled": false,
-        "likes": 2,
-        "commentsCount": 0,
-        "anonymous": false
-      },
-      {
-        "id": 3,
-        "fileId": 27,
-        "title": "The coronavirus outbreak (2019 nCoV) explaine",
-        "description": "The mechanism of action for 2019 novel coronavirus is unknown yet.",
-        "source": "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-        "templateId": 0,
-        "duration": 214000,
-        "views": 0,
-        "thumbnail": 6,
-        "userId": 19,
-        "username": "Nuzable ",
-        "avatar": null,
-        "start": 0,
-        "end": 0,
-        "createdDate": 1583769532000,
-        "updatedDate": 1583712000000,
-        "categoryId": 8,
-        "liked": false,
-        "tickerEnabled": false,
-        "likes": 2,
-        "commentsCount": 0,
-        "anonymous": false
-      },
-      {
-        "id": 4,
-        "fileId": 28,
-        "title": "How easily a virus spreads",
-        "description": "About the virus, it’s spread and risks.",
-        "source": "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
-        "templateId": 0,
-        "duration": 511000,
-        "views": 0,
-        "thumbnail": 7,
-        "userId": 19,
-        "username": "Nuzable ",
-        "avatar": null,
-        "start": 0,
-        "end": 0,
-        "createdDate": 1583769532000,
-        "updatedDate": 1583712000000,
-        "categoryId": 1,
-        "liked": false,
-        "tickerEnabled": false,
-        "likes": 2,
-        "commentsCount": 0,
-        "anonymous": false
+    const serverAddress = 'http://3.120.74.192:9090/rest';
+
+    app.ports.requestNews.subscribe(function (token) {
+
+      const Http = new XMLHttpRequest();
+
+      Http.open("GET", serverAddress + "/news");
+
+      Http.setRequestHeader('Content-Type', 'application/json');
+      Http.setRequestHeader('Authorization', token);
+
+      Http.send();
+
+      Http.onreadystatechange = (e) => {
+        if (Http.readyState === XMLHttpRequest.DONE) {
+          const parsedNews = Http.response ? JSON.parse(Http.response) : null;
+          app.ports.newsResponse.send(parsedNews);
+        }
+      };
+
+    });
+
+    app.ports.filmRequest.subscribe(function (filmId) {
+      const Http = new XMLHttpRequest();
+
+      Http.open("GET", serverAddress + "/films/" + filmId);
+
+      Http.setRequestHeader('Content-Type', 'application/json');
+      Http.setRequestHeader('Authorization', parsedAuth.authToken);
+
+      Http.send();
+
+      Http.onreadystatechange = (e) => {
+        if (Http.readyState === XMLHttpRequest.DONE) {
+          let parsedFilm = Http.responseText ? JSON.parse(Http.responseText) : null;
+          app.ports.filmResponse.send(parsedFilm);
+        }
+      };
+    });
+
+    app.ports.videoSourceRequest.subscribe(function (fileId) {
+
+      const param = {
+        headers : {"Content-Type": "application/json", "Authorization": parsedAuth.authToken},
+        method: "GET"
       }
-    ];
+      fetch(serverAddress + "/files/forweb/" + fileId, param)
+        .then(res => {console.log(res)})
+        .catch(error => {console.log(error)});
+      if (false) {
+        let Http = new XMLHttpRequest();
 
-    localStorage.setItem('news', JSON.stringify(staticData));
+      Http.open("GET", serverAddress + "/files/forweb/" + fileId);
+
+      Http.setRequestHeader('Content-Type', 'aplication/json');
+      Http.setRequestHeader('Authorization', parsedAuth.authToken);
+
+      Http.responseType = "blob";
+
+      Http.send();
+
+      Http.onreadystatechange = (e) => {
+        if (Http.readyState == 4) {
+          if (Http.status == 415) {
+            console.log("YES STE EM");
+          }
+        }
+        if (Http.readyState === XMLHttpRequest.DONE) {
+          console.log(Http.response);
+        }
+      }
+      }
+
+    });
   </script>
 </body>
 
