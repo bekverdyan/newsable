@@ -2,6 +2,8 @@ port module Main exposing (Model, init, main)
 
 import Bootstrap.Alert as Alert
 import Bootstrap.Button as Button
+import Bootstrap.Card as Card
+import Bootstrap.Card.Block as Block
 import Bootstrap.Form as Form
 import Bootstrap.Form.Input as Input
 import Bootstrap.Form.InputGroup as InputGroup
@@ -9,8 +11,10 @@ import Bootstrap.Grid as Grid
 import Bootstrap.Grid.Col as Col
 import Bootstrap.Grid.Row as Row
 import Bootstrap.ListGroup as ListGroup
+import Bootstrap.Navbar as Navbar
 import Bootstrap.Utilities.Spacing as Spacing
 import Browser
+import Debug
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
@@ -35,17 +39,40 @@ main =
 port saveAuth : E.Value -> Cmd msg
 
 
+port requestNews : E.Value -> Cmd msg
+
+
+port filmRequest : E.Value -> Cmd msg
+
+
+port videoSourceRequest : E.Value -> Cmd msg
+
+
 port loadAuth : (E.Value -> msg) -> Sub msg
 
 
-port loadNews : (E.Value -> msg) -> Sub msg
+
+-- port loadNews : (E.Value -> msg) -> Sub msg
+
+
+port newsResponse : (E.Value -> msg) -> Sub msg
+
+
+port filmResponse : (E.Value -> msg) -> Sub msg
+
+
+port videoPlayerSource : (E.Value -> msg) -> Sub msg
 
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ loadAuth LoadAuth
-        , loadNews LoadNews
+
+        -- , loadNews LoadNews
+        , newsResponse GotNews
+        , filmResponse GotFilm
+        , videoPlayerSource PlayVideo
         ]
 
 
@@ -73,12 +100,14 @@ type alias Model =
     , alertVisibility : Alert.Visibility
     , news : List News
     , player : Player
+    , navbarState : Navbar.State
     }
 
 
 type Player
     = Initial
     | Source String
+    | Error String
 
 
 type Request
@@ -102,6 +131,10 @@ type Reason
 
 init : () -> ( Model, Cmd Msg )
 init _ =
+    let
+        ( navbarState, navbarCmd ) =
+            Navbar.initialState NavbarMsg
+    in
     ( Model
         { email = ""
         , password = ""
@@ -111,7 +144,8 @@ init _ =
         Alert.closed
         []
         Initial
-    , Cmd.none
+        navbarState
+    , navbarCmd
     )
 
 
@@ -124,17 +158,19 @@ obtainToken email password =
         }
 
 
-getNews : String -> Cmd Msg
-getNews token =
-    Http.request
-        { method = "GET"
-        , headers = headers token
-        , url = "http://3.120.74.192:9090/rest/news"
-        , body = Http.jsonBody (E.object [])
-        , expect = Http.expectJson GotNews decodeNewsList
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+
+-- getNews : String -> Cmd Msg
+-- getNews token =
+--     Http.request
+--         { method = "GET"
+--         , headers = headers token
+--         , url = "http://3.120.74.192:9090/rest/news"
+--         , body = Http.jsonBody (E.object [])
+--         , expect = Http.expectJson GotNews decodeNewsList
+--         , timeout = Nothing
+--         , tracker = Nothing
+--         }
+--
 
 
 headers : String -> List Http.Header
@@ -142,7 +178,14 @@ headers token =
     [ Http.header "Content-Type" "application/json"
     , Http.header "Authorization" token
     , Http.header "Access-Control-Allow-Origin" "*"
+    , Http.header "Origin" "*"
     ]
+
+
+decodeFilm : D.Decoder (Maybe Int)
+decodeFilm =
+    D.map List.head
+        (D.list (D.field "id" D.int))
 
 
 decodeNewsList : D.Decoder (List News)
@@ -206,11 +249,16 @@ type Msg
     | SignIn
     | SignOut
     | GotToken (Result Http.Error AuthResult)
-    | GotNews (Result Http.Error (List News))
+      -- | GotNews (Result Http.Error (List News))
     | AlertMsg Alert.Visibility
     | LoadAuth E.Value
-    | LoadNews E.Value
-    | PlayVideo String
+      -- | LoadNews E.Value
+    | PlayVideo E.Value
+    | Play Int
+    | GotNews E.Value
+    | GotFilm E.Value
+    | RefreshPlaylist
+    | NavbarMsg Navbar.State
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -258,14 +306,13 @@ update msg model =
         GotToken response ->
             handleAuthResponse response model
 
-        GotNews response ->
-            ( { model
-                | news =
-                    handleNewsResponse response
-              }
-            , Cmd.none
-            )
-
+        -- GotNews response ->
+        --     ( { model
+        --         | news =
+        --             handleNewsResponse response
+        --       }
+        --     , Cmd.none
+        --     )
         LoadAuth encoded ->
             let
                 authResult =
@@ -291,23 +338,109 @@ update msg model =
             , Cmd.none
             )
 
-        LoadNews encoded ->
+        -- LoadNews encoded ->
+        --     let
+        --         result =
+        --             D.decodeValue decodeNewsList encoded
+        --
+        --         news =
+        --             case result of
+        --                 Ok value ->
+        --                     value
+        --
+        --                 Err reason ->
+        --                     []
+        --     in
+        --     ( { model | news = news }, Cmd.none )
+        PlayVideo encoded ->
             let
-                result =
-                    D.decodeValue decodeNewsList encoded
+                player =
+                    case
+                        D.decodeValue
+                            (D.field "link" D.string)
+                            encoded
+                    of
+                        Ok link ->
+                            Source link
 
+                        Err error ->
+                            Error <| D.errorToString error
+            in
+            ( { model
+                | player =
+                    player
+              }
+            , Cmd.none
+            )
+
+        Play fileId ->
+            ( model
+            , filmRequest <|
+                E.string <|
+                    String.fromInt
+                        fileId
+            )
+
+        GotNews encoded ->
+            let
                 news =
-                    case result of
+                    case D.decodeValue decodeNewsList encoded of
                         Ok value ->
                             value
 
-                        Err reason ->
+                        Err _ ->
                             []
             in
-            ( { model | news = news }, Cmd.none )
+            ( { model | news = news }
+            , Cmd.none
+            )
 
-        PlayVideo source ->
-            ( { model | player = Source source }, Cmd.none )
+        GotFilm encoded ->
+            ( model
+            , case D.decodeValue decodeFilm encoded of
+                Ok value ->
+                    case value of
+                        Just filmId ->
+                            videoSourceRequest <|
+                                E.string <|
+                                    String.fromInt
+                                        filmId
+
+                        Nothing ->
+                            let
+                                log =
+                                    Debug.log "No Films found" ""
+                            in
+                            -- TODO Alert about empty data
+                            Cmd.none
+
+                Err message ->
+                    let
+                        log =
+                            Debug.log "Film decode error" message
+                    in
+                    -- TODO Alert about decoder failure
+                    Cmd.none
+            )
+
+        RefreshPlaylist ->
+            ( model
+            , Cmd.batch
+                [ case model.credentials.token of
+                    Just token ->
+                        requestNews <| E.string token
+
+                    Nothing ->
+                        Cmd.none
+                , filmRequest <|
+                    E.string <|
+                        String.fromInt
+                            90
+                ]
+            )
+
+        NavbarMsg state ->
+            ( { model | navbarState = state }, Cmd.none )
 
 
 handleNewsResponse : Result Http.Error (List News) -> List News
@@ -338,7 +471,7 @@ handleAuthResponse response model =
               }
             , Cmd.batch
                 [ saveAuth <| encodeAuthResult authResult
-                , getNews token
+                , requestNews <| E.string token
                 ]
             )
 
@@ -403,34 +536,96 @@ view : Model -> Html Msg
 view model =
     case model.credentials.token of
         Just token ->
-            viewAdmin model
+            div []
+                [ viewNavbar model
+                , viewAdmin model
+                ]
 
         Nothing ->
             viewSignIn model
+
+
+viewNavbar : Model -> Html Msg
+viewNavbar model =
+    Grid.container []
+        -- Wrap in a container to center the navbar
+        [ Navbar.config NavbarMsg
+            |> Navbar.withAnimation
+            |> Navbar.collapseMedium
+            -- Collapse menu at the medium breakpoint
+            |> Navbar.info
+            -- Customize coloring
+            -- |> Navbar.brand
+            --     -- Add logo to your brand with a little styling to align nicely
+            --     [ href "#" ]
+            --     [ img
+            --         [ src "assets/images/elm-bootstrap.svg"
+            --         , class "d-inline-block align-top"
+            --         , style [ ( "width", "30px" ) ]
+            --         ]
+            --         []
+            --     , text " Elm Bootstrap"
+            --     ]
+            -- |> Navbar.items
+            --     [ Navbar.itemLink
+            --         [ href "#" ]
+            --         [ text "Item 1" ]
+            --     , Navbar.dropdown
+            --         -- Adding dropdowns is pretty simple
+            --         { id = "mydropdown"
+            --         , toggle = Navbar.dropdownToggle [] [ text "My dropdown" ]
+            --         , items =
+            --             [ Navbar.dropdownHeader [ text "Heading" ]
+            --             , Navbar.dropdownItem
+            --                 [ href "#" ]
+            --                 [ text "Drop item 1" ]
+            --             , Navbar.dropdownItem
+            --                 [ href "#" ]
+            --                 [ text "Drop item 2" ]
+            --             , Navbar.dropdownDivider
+            --             , Navbar.dropdownItem
+            --                 [ href "#" ]
+            --                 [ text "Drop item 3" ]
+            --             ]
+            --         }
+            --     ]
+            |> Navbar.customItems
+                [ Navbar.formItem []
+                    [ Button.button
+                        [ Button.warning
+                        , Button.attrs [ Spacing.ml2Sm ]
+                        , Button.onClick SignOut
+                        ]
+                        [ text "Sign out" ]
+                    ]
+                ]
+            |> Navbar.view model.navbarState
+        ]
 
 
 viewAdmin : Model -> Html Msg
 viewAdmin model =
     Grid.container []
         [ Grid.row []
-            [ Grid.col [] []
-            , Grid.col []
-                [ div []
-                    [ Button.button
-                        [ Button.warning
-                        , Button.attrs
-                            [ Spacing.ml1 ]
-                        , Button.onClick SignOut
-                        ]
-                        [ text "Sign out" ]
-                    ]
-                ]
-            ]
-        , Grid.row []
             [ Grid.col
                 []
-                [ ListGroup.custom <|
-                    List.map viewNews model.news
+                [ Card.config []
+                    |> Card.block []
+                        [ Block.text []
+                            [ div []
+                                [ Button.button
+                                    [ Button.secondary
+                                    , Button.onClick RefreshPlaylist
+                                    ]
+                                    [ text "Refresh" ]
+                                ]
+                            ]
+                        , Block.text []
+                            [ ListGroup.custom <|
+                                List.map viewNews model.news
+                            ]
+                        ]
+                    |> Card.view
                 ]
             , Grid.col
                 []
@@ -440,6 +635,9 @@ viewAdmin model =
 
                     Source video ->
                         videoPlayer video
+
+                    Error message ->
+                        viewErrorMessage message
                 ]
             ]
         ]
@@ -485,11 +683,19 @@ viewHelpText =
         ]
 
 
+viewErrorMessage : String -> Html Msg
+viewErrorMessage message =
+    div []
+        [ h3 [] [ text message ] ]
+
+
 viewNews : News -> ListGroup.CustomItem Msg
 viewNews news =
     ListGroup.button
         [ ListGroup.primary
-        , ListGroup.attrs [ onClick (PlayVideo news.source) ]
+
+        -- , ListGroup.attrs [ onClick (PlayVideo news.source) ]
+        , ListGroup.attrs [ onClick (Play news.fileId) ]
         ]
         [ text news.title ]
 
