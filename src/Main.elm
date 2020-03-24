@@ -483,18 +483,18 @@ update msg model =
                                         filmId
 
                         Nothing ->
-                            let
-                                log =
-                                    Debug.log "No Films found" ""
-                            in
+                            -- let
+                            --     log =
+                            --         Debug.log "No Films found" ""
+                            -- in
                             -- TODO Alert about empty data
                             Cmd.none
 
                 Err message ->
-                    let
-                        log =
-                            Debug.log "Film decode error" message
-                    in
+                    -- let
+                    --     log =
+                    --         Debug.log "Film decode error" message
+                    -- in
                     -- TODO Alert about decoder failure
                     Cmd.none
             )
