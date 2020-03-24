@@ -5,16 +5,18 @@ import Bootstrap.Button as Button
 import Bootstrap.Card as Card
 import Bootstrap.Card.Block as Block
 import Bootstrap.Form as Form
+import Bootstrap.Form.Fieldset as Fieldset
 import Bootstrap.Form.Input as Input
 import Bootstrap.Form.InputGroup as InputGroup
+import Bootstrap.Form.Textarea as Textarea
 import Bootstrap.Grid as Grid
 import Bootstrap.Grid.Col as Col
 import Bootstrap.Grid.Row as Row
 import Bootstrap.ListGroup as ListGroup
+import Bootstrap.Modal as Modal
 import Bootstrap.Navbar as Navbar
 import Bootstrap.Utilities.Spacing as Spacing
 import Browser
-import Debug
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
@@ -39,40 +41,41 @@ main =
 port saveAuth : E.Value -> Cmd msg
 
 
-port requestNews : E.Value -> Cmd msg
-
-
-port filmRequest : E.Value -> Cmd msg
-
-
-port videoSourceRequest : E.Value -> Cmd msg
-
-
 port loadAuth : (E.Value -> msg) -> Sub msg
 
 
-
--- port loadNews : (E.Value -> msg) -> Sub msg
+port requestNews : E.Value -> Cmd msg
 
 
 port newsResponse : (E.Value -> msg) -> Sub msg
 
 
+port filmRequest : E.Value -> Cmd msg
+
+
 port filmResponse : (E.Value -> msg) -> Sub msg
 
 
-port videoPlayerSource : (E.Value -> msg) -> Sub msg
+port videoSourceRequest : E.Value -> Cmd msg
+
+
+port videoSourceResponse : (E.Value -> msg) -> Sub msg
+
+
+port createNewsRequest : E.Value -> Cmd msg
+
+
+port createNewsResponse : (String -> msg) -> Sub msg
 
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ loadAuth LoadAuth
-
-        -- , loadNews LoadNews
         , newsResponse GotNews
         , filmResponse GotFilm
-        , videoPlayerSource PlayVideo
+        , videoSourceResponse PlayVideo
+        , createNewsResponse NewsCreationResponse
         ]
 
 
@@ -101,6 +104,14 @@ type alias Model =
     , news : List News
     , player : Player
     , navbarState : Navbar.State
+    , newsTemplate : CreateNewsTemplate
+    }
+
+
+type alias CreateNewsTemplate =
+    { title : String
+    , description : String
+    , url : String
     }
 
 
@@ -108,6 +119,7 @@ type Player
     = Initial
     | Source String
     | Error String
+    | AddNews
 
 
 type Request
@@ -129,6 +141,10 @@ type Reason
     | Other String
 
 
+
+-- INIT
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
     let
@@ -145,8 +161,13 @@ init _ =
         []
         Initial
         navbarState
+        clearNewsFormData
     , navbarCmd
     )
+
+
+
+-- HTTP
 
 
 obtainToken : String -> String -> Cmd Msg
@@ -158,28 +179,97 @@ obtainToken email password =
         }
 
 
+handleAuthResponse : Result Http.Error AuthResult -> Model -> ( Model, Cmd Msg )
+handleAuthResponse response model =
+    case response of
+        Ok authResult ->
+            let
+                token =
+                    authResult.authToken
 
--- getNews : String -> Cmd Msg
--- getNews token =
---     Http.request
---         { method = "GET"
---         , headers = headers token
---         , url = "http://3.120.74.192:9090/rest/news"
---         , body = Http.jsonBody (E.object [])
---         , expect = Http.expectJson GotNews decodeNewsList
---         , timeout = Nothing
---         , tracker = Nothing
---         }
---
+                credentials =
+                    model.credentials
+            in
+            ( { model
+                | request = Success
+                , credentials = { credentials | token = Just token }
+                , alertVisibility = Alert.closed
+              }
+            , Cmd.batch
+                [ saveAuth <| encodeAuthResult authResult
+                , requestNews <| E.string token
+                ]
+            )
+
+        Err error ->
+            case error of
+                Http.BadUrl url ->
+                    ( { model
+                        | request = Failure <| Other <| "Bad url: " ++ url
+                        , alertVisibility = Alert.shown
+                      }
+                    , Cmd.none
+                    )
+
+                Http.Timeout ->
+                    ( { model
+                        | request = Failure <| Other "Request timeout"
+                        , alertVisibility = Alert.shown
+                      }
+                    , Cmd.none
+                    )
+
+                Http.NetworkError ->
+                    ( { model
+                        | request = Failure <| Other "Network error"
+                        , alertVisibility = Alert.shown
+                      }
+                    , Cmd.none
+                    )
+
+                Http.BadStatus code ->
+                    handleStatusCode code model
+
+                Http.BadBody _ ->
+                    ( { model
+                        | request = Failure <| Other "Unexpected content received"
+                        , alertVisibility = Alert.shown
+                      }
+                    , Cmd.none
+                    )
 
 
-headers : String -> List Http.Header
-headers token =
-    [ Http.header "Content-Type" "application/json"
-    , Http.header "Authorization" token
-    , Http.header "Access-Control-Allow-Origin" "*"
-    , Http.header "Origin" "*"
-    ]
+handleStatusCode : Int -> Model -> ( Model, Cmd Msg )
+handleStatusCode code model =
+    case code of
+        401 ->
+            ( { model
+                | request = Failure Unauthorized
+                , alertVisibility = Alert.shown
+              }
+            , Cmd.none
+            )
+
+        _ ->
+            ( model, Cmd.none )
+
+
+
+-- ENCODE DECODE
+
+
+decodeAddNewsResponse : D.Decoder Int
+decodeAddNewsResponse =
+    D.field "id" D.int
+
+
+encodeNewsTemplate : CreateNewsTemplate -> E.Value
+encodeNewsTemplate template =
+    E.object
+        [ ( "title", E.string template.title )
+        , ( "description", E.string template.description )
+        , ( "url", E.string template.url )
+        ]
 
 
 decodeFilm : D.Decoder (Maybe Int)
@@ -252,13 +342,20 @@ type Msg
       -- | GotNews (Result Http.Error (List News))
     | AlertMsg Alert.Visibility
     | LoadAuth E.Value
-      -- | LoadNews E.Value
     | PlayVideo E.Value
     | Play Int
     | GotNews E.Value
     | GotFilm E.Value
     | RefreshPlaylist
     | NavbarMsg Navbar.State
+    | CloseNewsCreator
+    | ClearNewsFormData
+    | OpenNewsCreator
+    | InputNewsTitle String
+    | InputNewsDescription String
+    | InputNewsUrl String
+    | CreateNews
+    | NewsCreationResponse String
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -306,13 +403,6 @@ update msg model =
         GotToken response ->
             handleAuthResponse response model
 
-        -- GotNews response ->
-        --     ( { model
-        --         | news =
-        --             handleNewsResponse response
-        --       }
-        --     , Cmd.none
-        --     )
         LoadAuth encoded ->
             let
                 authResult =
@@ -338,20 +428,6 @@ update msg model =
             , Cmd.none
             )
 
-        -- LoadNews encoded ->
-        --     let
-        --         result =
-        --             D.decodeValue decodeNewsList encoded
-        --
-        --         news =
-        --             case result of
-        --                 Ok value ->
-        --                     value
-        --
-        --                 Err reason ->
-        --                     []
-        --     in
-        --     ( { model | news = news }, Cmd.none )
         PlayVideo encoded ->
             let
                 player =
@@ -442,90 +518,89 @@ update msg model =
         NavbarMsg state ->
             ( { model | navbarState = state }, Cmd.none )
 
+        CloseNewsCreator ->
+            ( { model | player = Initial }, Cmd.none )
 
-handleNewsResponse : Result Http.Error (List News) -> List News
-handleNewsResponse response =
-    case response of
-        Ok news ->
-            news
-
-        Err error ->
-            []
-
-
-handleAuthResponse : Result Http.Error AuthResult -> Model -> ( Model, Cmd Msg )
-handleAuthResponse response model =
-    case response of
-        Ok authResult ->
-            let
-                token =
-                    authResult.authToken
-
-                credentials =
-                    model.credentials
-            in
+        ClearNewsFormData ->
             ( { model
-                | request = Success
-                , credentials = { credentials | token = Just token }
-                , alertVisibility = Alert.closed
-              }
-            , Cmd.batch
-                [ saveAuth <| encodeAuthResult authResult
-                , requestNews <| E.string token
-                ]
-            )
-
-        Err error ->
-            case error of
-                Http.BadUrl url ->
-                    ( { model
-                        | request = Failure <| Other <| "Bad url: " ++ url
-                        , alertVisibility = Alert.shown
-                      }
-                    , Cmd.none
-                    )
-
-                Http.Timeout ->
-                    ( { model
-                        | request = Failure <| Other "Request timeout"
-                        , alertVisibility = Alert.shown
-                      }
-                    , Cmd.none
-                    )
-
-                Http.NetworkError ->
-                    ( { model
-                        | request = Failure <| Other "Network error"
-                        , alertVisibility = Alert.shown
-                      }
-                    , Cmd.none
-                    )
-
-                Http.BadStatus code ->
-                    handleStatusCode code model
-
-                Http.BadBody _ ->
-                    ( { model
-                        | request = Failure <| Other "Unexpected content received"
-                        , alertVisibility = Alert.shown
-                      }
-                    , Cmd.none
-                    )
-
-
-handleStatusCode : Int -> Model -> ( Model, Cmd Msg )
-handleStatusCode code model =
-    case code of
-        401 ->
-            ( { model
-                | request = Failure Unauthorized
-                , alertVisibility = Alert.shown
+                | player = AddNews
+                , newsTemplate = clearNewsFormData
               }
             , Cmd.none
             )
 
-        _ ->
-            ( model, Cmd.none )
+        OpenNewsCreator ->
+            ( { model | player = AddNews }, Cmd.none )
+
+        InputNewsTitle title ->
+            let
+                origTemplate =
+                    model.newsTemplate
+            in
+            ( { model
+                | newsTemplate =
+                    { origTemplate | title = title }
+              }
+            , Cmd.none
+            )
+
+        InputNewsDescription description ->
+            let
+                origTemplate =
+                    model.newsTemplate
+            in
+            ( { model
+                | newsTemplate =
+                    { origTemplate | description = description }
+              }
+            , Cmd.none
+            )
+
+        InputNewsUrl url ->
+            let
+                origTemplate =
+                    model.newsTemplate
+            in
+            ( { model
+                | newsTemplate =
+                    { origTemplate | url = url }
+              }
+            , Cmd.none
+            )
+
+        CreateNews ->
+            ( model
+            , createNewsRequest <|
+                encodeNewsTemplate model.newsTemplate
+            )
+
+        NewsCreationResponse encoded ->
+            let
+                responseStatus =
+                    case D.decodeString D.string encoded of
+                        Ok status ->
+                            if status == "success" then
+                                Error "News successfuly added"
+
+                            else
+                                Error "Could not add news"
+
+                        Err _ ->
+                            Error "Could not add news"
+            in
+            ( { model | player = responseStatus }, Cmd.none )
+
+
+
+-- HELPER
+
+
+clearNewsFormData : CreateNewsTemplate
+clearNewsFormData =
+    { title = ""
+    , description = ""
+    , url = ""
+    }
 
 
 
@@ -614,10 +689,16 @@ viewAdmin model =
                         [ Block.text []
                             [ div []
                                 [ Button.button
-                                    [ Button.secondary
+                                    [ Button.primary
                                     , Button.onClick RefreshPlaylist
                                     ]
                                     [ text "Refresh" ]
+                                , Button.button
+                                    [ Button.primary
+                                    , Button.attrs [ Spacing.ml1 ]
+                                    , Button.onClick OpenNewsCreator
+                                    ]
+                                    [ text "Create news" ]
                                 ]
                             ]
                         , Block.text []
@@ -638,6 +719,9 @@ viewAdmin model =
 
                     Error message ->
                         viewErrorMessage message
+
+                    AddNews ->
+                        viewAddNews model
                 ]
             ]
         ]
@@ -794,3 +878,73 @@ viewInput request placeholder value command =
 
         _ ->
             regularInput
+
+
+viewAddNews : Model -> Html Msg
+viewAddNews model =
+    Form.form []
+        [ Form.group []
+            [ Form.label [ for "title" ] [ text "Title" ]
+            , Input.text
+                [ Input.id "title"
+                , Input.onInput InputNewsTitle
+                , Input.value model.newsTemplate.title
+                ]
+            ]
+        , Form.group []
+            [ label [ for "description" ] [ text "Description" ]
+            , Textarea.textarea
+                [ Textarea.id "description"
+                , Textarea.rows 3
+                , Textarea.onInput InputNewsDescription
+                , Textarea.value model.newsTemplate.description
+                ]
+            ]
+        , Form.group []
+            [ Form.label [ for "url" ] [ text "Url" ]
+            , Input.text
+                [ Input.id "url"
+                , Input.onInput InputNewsUrl
+                , Input.value model.newsTemplate.url
+                ]
+            ]
+        , viewAddNewsButton model.newsTemplate
+        , Button.button
+            [ Button.warning
+            , Button.attrs [ Spacing.ml1 ]
+            , Button.onClick ClearNewsFormData
+            ]
+            [ text "Clear form" ]
+        , Button.button
+            [ Button.warning
+            , Button.attrs [ Spacing.ml1 ]
+            , Button.onClick CloseNewsCreator
+            ]
+            [ text "Close" ]
+        ]
+
+
+viewAddNewsButton : CreateNewsTemplate -> Html Msg
+viewAddNewsButton template =
+    if
+        template.title
+            == ""
+            || template.description
+            == ""
+            || template.url
+            == ""
+    then
+        Button.button
+            [ Button.primary
+            , Button.disabled True
+            , Button.attrs [ Spacing.ml1 ]
+            ]
+            [ text "Add news" ]
+
+    else
+        Button.button
+            [ Button.primary
+            , Button.attrs [ Spacing.ml1 ]
+            , Button.onClick CreateNews
+            ]
+            [ text "Add news" ]
