@@ -105,7 +105,7 @@
 
     });
 
-    app.ports.addNewsRequest.subscribe(function (news) {
+    app.ports.createNewsRequest.subscribe(function (news) {
       const Http = new XMLHttpRequest();
 
       Http.open("POST", serverAddress + "/textnews/add");
@@ -117,11 +117,8 @@
 
       Http.onreadystatechange = (e) => {
         if (Http.readyState === XMLHttpRequest.DONE) {
-          if (Http.status == 200) {
-            app.ports.addNewsResponse.send("success");
-          } else {
-            app.ports.addNewsResponse.send("error");
-          }
+          let parsedResult = Http.responseText ? JSON.parse(Http.responseText) : null;
+          app.ports.createNewsResponse.send(parsedResult);
         }
       };
     });
