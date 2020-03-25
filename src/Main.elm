@@ -65,7 +65,7 @@ port videoSourceResponse : (E.Value -> msg) -> Sub msg
 port createNewsRequest : E.Value -> Cmd msg
 
 
-port createNewsResponse : (String -> msg) -> Sub msg
+port createNewsResponse : (E.Value -> msg) -> Sub msg
 
 
 subscriptions : Model -> Sub Msg
@@ -258,9 +258,9 @@ handleStatusCode code model =
 -- ENCODE DECODE
 
 
-decodeAddNewsResponse : D.Decoder Int
+decodeAddNewsResponse : D.Decoder String
 decodeAddNewsResponse =
-    D.field "id" D.int
+    D.field "statusCode" D.string
 
 
 encodeNewsTemplate : CreateNewsTemplate -> E.Value
@@ -355,7 +355,7 @@ type Msg
     | InputNewsDescription String
     | InputNewsUrl String
     | CreateNews
-    | NewsCreationResponse String
+    | NewsCreationResponse E.Value
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -577,9 +577,9 @@ update msg model =
         NewsCreationResponse encoded ->
             let
                 responseStatus =
-                    case D.decodeString D.string encoded of
+                    case D.decodeValue decodeAddNewsResponse encoded of
                         Ok status ->
-                            if status == "success" then
+                            if status == "OK" then
                                 Error "News successfuly added"
 
                             else
