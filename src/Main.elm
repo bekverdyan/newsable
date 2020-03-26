@@ -132,7 +132,6 @@ type Request
 type alias News =
     { title : String
     , fileId : Int
-    , source : String
     }
 
 
@@ -285,10 +284,9 @@ decodeNewsList =
 
 decodeNews : D.Decoder News
 decodeNews =
-    D.map3 News
+    D.map2 News
         (D.field "title" D.string)
         (D.field "fileId" D.int)
-        (D.field "source" D.string)
 
 
 encodeNewsList : List News -> E.Value
@@ -433,7 +431,7 @@ update msg model =
                 player =
                     case
                         D.decodeValue
-                            (D.field "link" D.string)
+                            (D.field "ulr" D.string)
                             encoded
                     of
                         Ok link ->
@@ -487,7 +485,7 @@ update msg model =
                             --     log =
                             --         Debug.log "No Films found" ""
                             -- in
-                            -- TODO Alert about empty data
+                            -- -- TODO Alert about empty data
                             Cmd.none
 
                 Err message ->
@@ -508,10 +506,11 @@ update msg model =
 
                     Nothing ->
                         Cmd.none
-                , filmRequest <|
-                    E.string <|
-                        String.fromInt
-                            90
+
+                -- , filmRequest <|
+                --     E.string <|
+                --         String.fromInt
+                --             90
                 ]
             )
 

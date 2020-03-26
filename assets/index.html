@@ -65,42 +65,28 @@
       Http.onreadystatechange = (e) => {
         if (Http.readyState === XMLHttpRequest.DONE) {
           let parsedFilm = Http.responseText ? JSON.parse(Http.responseText) : null;
+          console.log(parsedFilm);
           app.ports.filmResponse.send(parsedFilm);
         }
       };
     });
 
     app.ports.videoSourceRequest.subscribe(function (fileId) {
-
-      const param = {
-        headers : {"Content-Type": "application/json", "Authorization": parsedAuth.authToken},
-        method: "GET"
-      }
-      fetch(serverAddress + "/files/forweb/" + fileId, param)
-        .then(res => {console.log(res)})
-        .catch(error => {console.log(error)});
-      if (false) {
-        let Http = new XMLHttpRequest();
+      const Http = new XMLHttpRequest();
 
       Http.open("GET", serverAddress + "/files/forweb/" + fileId);
 
       Http.setRequestHeader('Content-Type', 'aplication/json');
       Http.setRequestHeader('Authorization', parsedAuth.authToken);
 
-      Http.responseType = "blob";
-
       Http.send();
 
       Http.onreadystatechange = (e) => {
-        if (Http.readyState == 4) {
-          if (Http.status == 415) {
-            console.log("YES STE EM");
-          }
-        }
         if (Http.readyState === XMLHttpRequest.DONE) {
-          console.log(Http.response);
+          let parsed = Http.responseText ? JSON.parse(Http.responseText) : null;
+          console.log(parsed);
+          app.ports.videoSourceResponse.send(parsed);
         }
-      }
       }
 
     });
