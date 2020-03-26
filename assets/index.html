@@ -5,8 +5,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 
-  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
-  <!-- <link rel="stylesheet" href="css/bootstrap.css"> -->
+  <link rel="stylesheet"
+        href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
+        integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm"
+        crossorigin="anonymous">
   <script src="newsable.min.js"></script>
 </head>
 
@@ -65,7 +67,6 @@
       Http.onreadystatechange = (e) => {
         if (Http.readyState === XMLHttpRequest.DONE) {
           let parsedFilm = Http.responseText ? JSON.parse(Http.responseText) : null;
-          console.log(parsedFilm);
           app.ports.filmResponse.send(parsedFilm);
         }
       };
@@ -76,15 +77,14 @@
 
       Http.open("GET", serverAddress + "/files/forweb/" + fileId);
 
-      Http.setRequestHeader('Content-Type', 'aplication/json');
+      Http.setRequestHeader('Content-Type', 'application/json');
       Http.setRequestHeader('Authorization', parsedAuth.authToken);
 
       Http.send();
 
       Http.onreadystatechange = (e) => {
         if (Http.readyState === XMLHttpRequest.DONE) {
-          let parsed = Http.responseText ? JSON.parse(Http.responseText) : null;
-          console.log(parsed);
+          const parsed = Http.responseText ? JSON.parse(Http.responseText) : null;
           app.ports.videoSourceResponse.send(parsed);
         }
       }
