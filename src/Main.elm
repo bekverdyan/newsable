@@ -15,6 +15,7 @@ import Bootstrap.Grid.Row as Row
 import Bootstrap.ListGroup as ListGroup
 import Bootstrap.Modal as Modal
 import Bootstrap.Navbar as Navbar
+import Bootstrap.Spinner as Spinner
 import Bootstrap.Utilities.Spacing as Spacing
 import Browser
 import Html exposing (..)
@@ -105,7 +106,13 @@ type alias Model =
     , player : Player
     , navbarState : Navbar.State
     , newsTemplate : CreateNewsTemplate
+    , createNewsStatus : CreateNews
     }
+
+
+type CreateNews
+    = Ready
+    | Busy
 
 
 type alias CreateNewsTemplate =
@@ -161,6 +168,7 @@ init _ =
         Initial
         navbarState
         clearNewsFormData
+        Ready
     , navbarCmd
     )
 
@@ -423,7 +431,12 @@ update msg model =
                 | credentials =
                     { credentials | token = token }
               }
-            , Cmd.none
+            , case token of
+                Just value ->
+                    requestNews <| E.string value
+
+                Nothing ->
+                    Cmd.none
             )
 
         PlayVideo encoded ->
@@ -568,7 +581,7 @@ update msg model =
             )
 
         CreateNews ->
-            ( model
+            ( { model | createNewsStatus = Busy }
             , createNewsRequest <|
                 encodeNewsTemplate model.newsTemplate
             )
@@ -587,7 +600,13 @@ update msg model =
                         Err _ ->
                             Error "Could not add news"
             in
-            ( { model | player = responseStatus }, Cmd.none )
+            ( { model
+                | player = responseStatus
+                , createNewsStatus = Ready
+                , newsTemplate = clearNewsFormData
+              }
+            , Cmd.none
+            )
 
 
 
@@ -907,7 +926,7 @@ viewAddNews model =
                 , Input.value model.newsTemplate.url
                 ]
             ]
-        , viewAddNewsButton model.newsTemplate
+        , viewSaveButton model
         , Button.button
             [ Button.warning
             , Button.attrs [ Spacing.ml1 ]
@@ -921,6 +940,16 @@ viewAddNews model =
             ]
             [ text "Close" ]
         ]
+
+
+viewSaveButton : Model -> Html Msg
+viewSaveButton model =
+    case model.createNewsStatus of
+        Ready ->
+            viewAddNewsButton model.newsTemplate
+
+        Busy ->
+            viewBusyButton
 
 
 viewAddNewsButton : CreateNewsTemplate -> Html Msg
@@ -947,3 +976,19 @@ viewAddNewsButton template =
             , Button.onClick CreateNews
             ]
             [ text "Add news" ]
+
+
+viewBusyButton : Html Msg
+viewBusyButton =
+    Button.button
+        [ Button.primary
+        , Button.disabled True
+        , Button.attrs [ Spacing.mr3 ]
+        ]
+        [ Spinner.spinner
+            [ Spinner.small
+            , Spinner.attrs [ Spacing.mr1 ]
+            ]
+            []
+        , text "Saving..."
+        ]
