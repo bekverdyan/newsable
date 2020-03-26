@@ -444,11 +444,11 @@ update msg model =
                 player =
                     case
                         D.decodeValue
-                            (D.field "ulr" D.string)
+                            (D.field "url" D.string)
                             encoded
                     of
-                        Ok link ->
-                            Source link
+                        Ok url ->
+                            Source url
 
                         Err error ->
                             Error <| D.errorToString error
