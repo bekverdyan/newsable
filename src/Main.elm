@@ -672,7 +672,7 @@ update msg model =
                             encoded
                     of
                         Ok message ->
-                            if message == "success" then
+                            if message == "NO_CONTENT" then
                                 Message "Accepted"
 
                             else
@@ -692,7 +692,7 @@ update msg model =
                             encoded
                     of
                         Ok message ->
-                            if message == "success" then
+                            if message == "NO_CONTENT" then
                                 Message "Rejected"
 
                             else

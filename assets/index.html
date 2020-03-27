@@ -112,7 +112,7 @@
     app.ports.acceptNewsRequest.subscribe(function (newsId) {
       const Http = new XMLHttpRequest();
 
-      Http.open("GET", serverAddress + "/news/" + newsId + "/accept");
+      Http.open("POST", serverAddress + "/news/" + newsId + "/accept");
 
       Http.setRequestHeader('Content-Type', 'application/json');
       Http.setRequestHeader('Authorization', parsedAuth.authToken);
@@ -131,7 +131,7 @@
     app.ports.rejectNewsRequest.subscribe(function (newsId) {
       const Http = new XMLHttpRequest();
 
-      Http.open("GET", serverAddress + "/news/" + newsId + "/reject");
+      Http.open("POST", serverAddress + "/news/" + newsId + "/reject");
 
       Http.setRequestHeader('Content-Type', 'application/json');
       Http.setRequestHeader('Authorization', parsedAuth.authToken);
@@ -142,7 +142,7 @@
       Http.onreadystatechange = (e) => {
         if (Http.readyState === XMLHttpRequest.DONE) {
           let parsedResult = Http.responseText ? JSON.parse(Http.responseText) : null;
-          app.ports.acceptNewsResponse.send(parsedResult);
+          app.ports.rejectNewsResponse.send(parsedResult);
         }
       };
     });
