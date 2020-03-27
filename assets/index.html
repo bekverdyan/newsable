@@ -17,20 +17,25 @@
     <div id="elm"></div>
   </div>
   <script>
-    var app = Elm.Main.init({
+    let app = Elm.Main.init({
       node: document.getElementById('elm')
     });
+
+    const token = function() {
+      const auth = localStorage.getItem('auth');
+      const parsedAuth = auth ? JSON.parse(auth) : null;
+      return parsedAuth.authToken;
+    }
 
     app.ports.saveAuth.subscribe(function (data) {
       localStorage.setItem('auth', JSON.stringify(data));
     });
 
-    var auth = localStorage.getItem('auth');
-    var parsedAuth = auth ? JSON.parse(auth) : null;
-    var news = localStorage.getItem('news');
-    var parsedNews = news ? JSON.parse(news) : null;
 
-    app.ports.loadAuth.send(parsedAuth);
+    let news = localStorage.getItem('news');
+    let parsedNews = news ? JSON.parse(news) : null;
+
+    app.ports.loadAuth.send(token);
 
     const serverAddress = 'http://3.120.74.192:9090/rest';
 
@@ -60,7 +65,7 @@
       Http.open("GET", serverAddress + "/films/" + filmId);
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', parsedAuth.authToken);
+      Http.setRequestHeader('Authorization', token());
 
       Http.send();
 
@@ -78,7 +83,7 @@
       Http.open("GET", serverAddress + "/files/forweb/" + fileId);
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', parsedAuth.authToken);
+      Http.setRequestHeader('Authorization', token());
 
       Http.send();
 
@@ -97,7 +102,7 @@
       Http.open("POST", serverAddress + "/textnews/add");
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', parsedAuth.authToken);
+      Http.setRequestHeader('Authorization', token());
 
       Http.send(JSON.stringify(news));
 
@@ -115,7 +120,7 @@
       Http.open("POST", serverAddress + "/news/" + newsId + "/accept");
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', parsedAuth.authToken);
+      Http.setRequestHeader('Authorization', token());
 
       Http.send();
 
@@ -134,7 +139,7 @@
       Http.open("POST", serverAddress + "/news/" + newsId + "/reject");
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', parsedAuth.authToken);
+      Http.setRequestHeader('Authorization', token());
 
       Http.send();
 
