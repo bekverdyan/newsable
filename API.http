@@ -18,6 +18,13 @@ Authorization: {{token}}
 {}
 
 ###
+GET {{host}}/news/38/accept
+Content-Type: application/json
+Authorization: {{token}}
+
+{}
+
+###
 GET {{host}}/api/users/list
 Content-Type: application/json
 Authorization: {{token}}

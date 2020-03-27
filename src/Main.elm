@@ -24,6 +24,7 @@ import Html.Events exposing (..)
 import Http
 import Json.Decode as D
 import Json.Encode as E
+import Loading exposing (LoaderType(..), defaultConfig, render)
 
 
 main =
@@ -69,6 +70,18 @@ port createNewsRequest : E.Value -> Cmd msg
 port createNewsResponse : (E.Value -> msg) -> Sub msg
 
 
+port acceptNewsRequest : E.Value -> Cmd msg
+
+
+port acceptNewsResponse : (E.Value -> msg) -> Sub msg
+
+
+port rejectNewsRequest : E.Value -> Cmd msg
+
+
+port rejectNewsResponse : (E.Value -> msg) -> Sub msg
+
+
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
@@ -77,6 +90,8 @@ subscriptions model =
         , filmResponse GotFilm
         , videoSourceResponse PlayVideo
         , createNewsResponse NewsCreationResponse
+        , acceptNewsResponse GotAcceptedNews
+        , rejectNewsResponse GotRejectedNews
         ]
 
 
@@ -107,6 +122,7 @@ type alias Model =
     , navbarState : Navbar.State
     , newsTemplate : CreateNewsTemplate
     , createNewsStatus : CreateNews
+    , selectedNews : Maybe News
     }
 
 
@@ -124,8 +140,10 @@ type alias CreateNewsTemplate =
 
 type Player
     = Initial
-    | Source String
+    | LoadingVideo
+    | PlayingVideo String
     | Error String
+    | Message String
     | AddNews
 
 
@@ -137,7 +155,8 @@ type Request
 
 
 type alias News =
-    { title : String
+    { id : Int
+    , title : String
     , fileId : Int
     }
 
@@ -169,6 +188,7 @@ init _ =
         navbarState
         clearNewsFormData
         Ready
+        Nothing
     , navbarCmd
     )
 
@@ -292,7 +312,8 @@ decodeNewsList =
 
 decodeNews : D.Decoder News
 decodeNews =
-    D.map2 News
+    D.map3 News
+        (D.field "id" D.int)
         (D.field "title" D.string)
         (D.field "fileId" D.int)
 
@@ -305,7 +326,8 @@ encodeNewsList news =
 encodeNews : News -> E.Value
 encodeNews news =
     E.object
-        [ ( "title", E.string news.title )
+        [ ( "id", E.int news.id )
+        , ( "title", E.string news.title )
         , ( "fileId", E.int news.fileId )
         ]
 
@@ -349,7 +371,7 @@ type Msg
     | AlertMsg Alert.Visibility
     | LoadAuth E.Value
     | PlayVideo E.Value
-    | Play Int
+    | Play News
     | GotNews E.Value
     | GotFilm E.Value
     | RefreshPlaylist
@@ -362,6 +384,10 @@ type Msg
     | InputNewsUrl String
     | CreateNews
     | NewsCreationResponse E.Value
+    | AcceptNews
+    | RejectNews
+    | GotAcceptedNews E.Value
+    | GotRejectedNews E.Value
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -448,7 +474,7 @@ update msg model =
                             encoded
                     of
                         Ok url ->
-                            Source url
+                            PlayingVideo url
 
                         Err error ->
                             Error <| D.errorToString error
@@ -460,12 +486,15 @@ update msg model =
             , Cmd.none
             )
 
-        Play fileId ->
-            ( model
+        Play news ->
+            ( { model
+                | selectedNews = Just news
+                , player = LoadingVideo
+              }
             , filmRequest <|
                 E.string <|
                     String.fromInt
-                        fileId
+                        news.fileId
             )
 
         GotNews encoded ->
@@ -608,6 +637,72 @@ update msg model =
             , Cmd.none
             )
 
+        AcceptNews ->
+            ( model
+            , case model.selectedNews of
+                Just news ->
+                    acceptNewsRequest <|
+                        E.string <|
+                            String.fromInt news.id
+
+                Nothing ->
+                    -- TODO Tell user about this case
+                    Cmd.none
+            )
+
+        RejectNews ->
+            ( model
+            , case model.selectedNews of
+                Just news ->
+                    rejectNewsRequest <|
+                        E.string <|
+                            String.fromInt news.id
+
+                Nothing ->
+                    -- TODO tell user about this case
+                    Cmd.none
+            )
+
+        GotAcceptedNews encoded ->
+            let
+                player =
+                    case
+                        D.decodeValue
+                            (D.field "statusCode" D.string)
+                            encoded
+                    of
+                        Ok message ->
+                            if message == "success" then
+                                Message "Accepted"
+
+                            else
+                                Error "Failed to accept"
+
+                        Err message ->
+                            Error <| D.errorToString message
+            in
+            ( { model | player = player }, Cmd.none )
+
+        GotRejectedNews encoded ->
+            let
+                player =
+                    case
+                        D.decodeValue
+                            (D.field "statusCode" D.string)
+                            encoded
+                    of
+                        Ok message ->
+                            if message == "success" then
+                                Message "Rejected"
+
+                            else
+                                Error "Failed to reject"
+
+                        Err err ->
+                            Error <| D.errorToString err
+            in
+            ( { model | player = player }, Cmd.none )
+
 
 
 -- HELPER
@@ -732,11 +827,28 @@ viewAdmin model =
                     Initial ->
                         viewHelpText
 
-                    Source video ->
-                        videoPlayer video
+                    LoadingVideo ->
+                        -- div []
+                        Loading.render
+                            Loading.Spinner
+                            -- LoaderType
+                            { defaultConfig
+                                | color = "#d3869b"
+                                , size = 150
+                            }
+                            -- Config
+                            Loading.On
+
+                    -- LoadingState
+                    -- ]
+                    PlayingVideo url ->
+                        videoPlayer url model.selectedNews
 
                     Error message ->
                         viewErrorMessage message
+
+                    Message message ->
+                        viewMessage message
 
                     AddNews ->
                         viewAddNews model
@@ -745,15 +857,15 @@ viewAdmin model =
         ]
 
 
-videoPlayer : String -> Html Msg
-videoPlayer source =
+videoPlayer : String -> Maybe News -> Html Msg
+videoPlayer url news =
     div []
         [ div []
             [ video
                 [ width 320
                 , height 240
                 , autoplay True
-                , src source
+                , src url
                 ]
                 []
             ]
@@ -762,11 +874,13 @@ videoPlayer source =
             [ Button.button
                 [ Button.success
                 , Button.attrs [ Spacing.ml1 ]
+                , Button.onClick AcceptNews
                 ]
                 [ text "Accept" ]
             , Button.button
                 [ Button.danger
                 , Button.attrs [ Spacing.ml1 ]
+                , Button.onClick RejectNews
                 ]
                 [ text "Reject" ]
             ]
@@ -785,6 +899,11 @@ viewHelpText =
         ]
 
 
+viewMessage : String -> Html Msg
+viewMessage message =
+    div [] [ h4 [] [ text message ] ]
+
+
 viewErrorMessage : String -> Html Msg
 viewErrorMessage message =
     div []
@@ -797,7 +916,7 @@ viewNews news =
         [ ListGroup.primary
 
         -- , ListGroup.attrs [ onClick (PlayVideo news.source) ]
-        , ListGroup.attrs [ onClick (Play news.fileId) ]
+        , ListGroup.attrs [ onClick (Play news) ]
         ]
         [ text news.title ]
 
@@ -985,10 +1104,19 @@ viewBusyButton =
         , Button.disabled True
         , Button.attrs [ Spacing.mr3 ]
         ]
-        [ Spinner.spinner
-            [ Spinner.small
-            , Spinner.attrs [ Spacing.mr1 ]
+        [ span []
+            [ Loading.render
+                Loading.BouncingBalls
+                -- LoaderType
+                { defaultConfig
+                    | color = "#fabd2f"
+                    , size = 23
+                }
+                -- Config
+                Loading.On
+
+            -- LoadingState
             ]
-            []
-        , text "Saving..."
+
+        -- , text "Processing"
         ]
