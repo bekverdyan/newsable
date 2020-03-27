@@ -5,22 +5,26 @@ import Bootstrap.Button as Button
 import Bootstrap.Card as Card
 import Bootstrap.Card.Block as Block
 import Bootstrap.Form as Form
+import Bootstrap.Form.Fieldset as Fieldset
 import Bootstrap.Form.Input as Input
 import Bootstrap.Form.InputGroup as InputGroup
+import Bootstrap.Form.Textarea as Textarea
 import Bootstrap.Grid as Grid
 import Bootstrap.Grid.Col as Col
 import Bootstrap.Grid.Row as Row
 import Bootstrap.ListGroup as ListGroup
+import Bootstrap.Modal as Modal
 import Bootstrap.Navbar as Navbar
+import Bootstrap.Spinner as Spinner
 import Bootstrap.Utilities.Spacing as Spacing
 import Browser
-import Debug
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http
 import Json.Decode as D
 import Json.Encode as E
+import Loading exposing (LoaderType(..), defaultConfig, render)
 
 
 main =
@@ -39,40 +43,55 @@ main =
 port saveAuth : E.Value -> Cmd msg
 
 
-port requestNews : E.Value -> Cmd msg
-
-
-port filmRequest : E.Value -> Cmd msg
-
-
-port videoSourceRequest : E.Value -> Cmd msg
-
-
 port loadAuth : (E.Value -> msg) -> Sub msg
 
 
-
--- port loadNews : (E.Value -> msg) -> Sub msg
+port requestNews : E.Value -> Cmd msg
 
 
 port newsResponse : (E.Value -> msg) -> Sub msg
 
 
+port filmRequest : E.Value -> Cmd msg
+
+
 port filmResponse : (E.Value -> msg) -> Sub msg
 
 
-port videoPlayerSource : (E.Value -> msg) -> Sub msg
+port videoSourceRequest : E.Value -> Cmd msg
+
+
+port videoSourceResponse : (E.Value -> msg) -> Sub msg
+
+
+port createNewsRequest : E.Value -> Cmd msg
+
+
+port createNewsResponse : (E.Value -> msg) -> Sub msg
+
+
+port acceptNewsRequest : E.Value -> Cmd msg
+
+
+port acceptNewsResponse : (E.Value -> msg) -> Sub msg
+
+
+port rejectNewsRequest : E.Value -> Cmd msg
+
+
+port rejectNewsResponse : (E.Value -> msg) -> Sub msg
 
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ loadAuth LoadAuth
-
-        -- , loadNews LoadNews
         , newsResponse GotNews
         , filmResponse GotFilm
-        , videoPlayerSource PlayVideo
+        , videoSourceResponse PlayVideo
+        , createNewsResponse NewsCreationResponse
+        , acceptNewsResponse GotAcceptedNews
+        , rejectNewsResponse GotRejectedNews
         ]
 
 
@@ -101,13 +120,31 @@ type alias Model =
     , news : List News
     , player : Player
     , navbarState : Navbar.State
+    , newsTemplate : CreateNewsTemplate
+    , createNewsStatus : CreateNews
+    , selectedNews : Maybe News
+    }
+
+
+type CreateNews
+    = Ready
+    | Busy
+
+
+type alias CreateNewsTemplate =
+    { title : String
+    , description : String
+    , url : String
     }
 
 
 type Player
     = Initial
-    | Source String
+    | LoadingVideo
+    | PlayingVideo String
     | Error String
+    | Message String
+    | AddNews
 
 
 type Request
@@ -118,15 +155,19 @@ type Request
 
 
 type alias News =
-    { title : String
+    { id : Int
+    , title : String
     , fileId : Int
-    , source : String
     }
 
 
 type Reason
     = Unauthorized
     | Other String
+
+
+
+-- INIT
 
 
 init : () -> ( Model, Cmd Msg )
@@ -145,8 +186,15 @@ init _ =
         []
         Initial
         navbarState
+        clearNewsFormData
+        Ready
+        Nothing
     , navbarCmd
     )
+
+
+
+-- HTTP
 
 
 obtainToken : String -> String -> Cmd Msg
@@ -156,301 +204,6 @@ obtainToken email password =
         , body = Http.jsonBody (encodeRequestBody email password)
         , expect = Http.expectJson GotToken decodeAuthResult
         }
-
-
-
--- getNews : String -> Cmd Msg
--- getNews token =
---     Http.request
---         { method = "GET"
---         , headers = headers token
---         , url = "http://3.120.74.192:9090/rest/news"
---         , body = Http.jsonBody (E.object [])
---         , expect = Http.expectJson GotNews decodeNewsList
---         , timeout = Nothing
---         , tracker = Nothing
---         }
---
-
-
-headers : String -> List Http.Header
-headers token =
-    [ Http.header "Content-Type" "application/json"
-    , Http.header "Authorization" token
-    , Http.header "Access-Control-Allow-Origin" "*"
-    , Http.header "Origin" "*"
-    ]
-
-
-decodeFilm : D.Decoder (Maybe Int)
-decodeFilm =
-    D.map List.head
-        (D.list (D.field "id" D.int))
-
-
-decodeNewsList : D.Decoder (List News)
-decodeNewsList =
-    D.list decodeNews
-
-
-decodeNews : D.Decoder News
-decodeNews =
-    D.map3 News
-        (D.field "title" D.string)
-        (D.field "fileId" D.int)
-        (D.field "source" D.string)
-
-
-encodeNewsList : List News -> E.Value
-encodeNewsList news =
-    E.list encodeNews news
-
-
-encodeNews : News -> E.Value
-encodeNews news =
-    E.object
-        [ ( "title", E.string news.title )
-        , ( "fileId", E.int news.fileId )
-        ]
-
-
-decodeAuthResult : D.Decoder AuthResult
-decodeAuthResult =
-    D.map3 AuthResult
-        (D.field "authToken" D.string)
-        (D.field "expires" D.string)
-        (D.field "isFirstLogin" D.bool)
-
-
-encodeAuthResult : AuthResult -> E.Value
-encodeAuthResult authResult =
-    E.object
-        [ ( "authToken", E.string authResult.authToken )
-        , ( "expires", E.string authResult.expires )
-        , ( "isFirstLogin", E.bool authResult.isFirstLogin )
-        ]
-
-
-encodeRequestBody : String -> String -> E.Value
-encodeRequestBody email password =
-    E.object
-        [ ( "email", E.string email )
-        , ( "password", E.string password )
-        ]
-
-
-
--- UPDATE
-
-
-type Msg
-    = InputEmail String
-    | InputPassword String
-    | SignIn
-    | SignOut
-    | GotToken (Result Http.Error AuthResult)
-      -- | GotNews (Result Http.Error (List News))
-    | AlertMsg Alert.Visibility
-    | LoadAuth E.Value
-      -- | LoadNews E.Value
-    | PlayVideo E.Value
-    | Play Int
-    | GotNews E.Value
-    | GotFilm E.Value
-    | RefreshPlaylist
-    | NavbarMsg Navbar.State
-
-
-update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
-    case msg of
-        InputEmail email ->
-            let
-                credentials =
-                    model.credentials
-            in
-            ( { model | credentials = { credentials | email = email } }, Cmd.none )
-
-        InputPassword password ->
-            let
-                credentials =
-                    model.credentials
-            in
-            ( { model | credentials = { credentials | password = password } }, Cmd.none )
-
-        SignIn ->
-            ( { model | alertVisibility = Alert.closed }
-            , obtainToken model.credentials.email model.credentials.password
-            )
-
-        SignOut ->
-            let
-                credentials =
-                    model.credentials
-
-                emptyAuth =
-                    E.object [ ( "status", E.string "Unauthorized" ) ]
-            in
-            ( { model
-                | credentials =
-                    { credentials
-                        | token = Nothing
-                    }
-              }
-            , saveAuth emptyAuth
-            )
-
-        AlertMsg visibility ->
-            ( { model | alertVisibility = visibility }, Cmd.none )
-
-        GotToken response ->
-            handleAuthResponse response model
-
-        -- GotNews response ->
-        --     ( { model
-        --         | news =
-        --             handleNewsResponse response
-        --       }
-        --     , Cmd.none
-        --     )
-        LoadAuth encoded ->
-            let
-                authResult =
-                    D.decodeValue
-                        decodeAuthResult
-                        encoded
-
-                token =
-                    case authResult of
-                        Ok result ->
-                            Just result.authToken
-
-                        Err _ ->
-                            Nothing
-
-                credentials =
-                    model.credentials
-            in
-            ( { model
-                | credentials =
-                    { credentials | token = token }
-              }
-            , Cmd.none
-            )
-
-        -- LoadNews encoded ->
-        --     let
-        --         result =
-        --             D.decodeValue decodeNewsList encoded
-        --
-        --         news =
-        --             case result of
-        --                 Ok value ->
-        --                     value
-        --
-        --                 Err reason ->
-        --                     []
-        --     in
-        --     ( { model | news = news }, Cmd.none )
-        PlayVideo encoded ->
-            let
-                player =
-                    case
-                        D.decodeValue
-                            (D.field "link" D.string)
-                            encoded
-                    of
-                        Ok link ->
-                            Source link
-
-                        Err error ->
-                            Error <| D.errorToString error
-            in
-            ( { model
-                | player =
-                    player
-              }
-            , Cmd.none
-            )
-
-        Play fileId ->
-            ( model
-            , filmRequest <|
-                E.string <|
-                    String.fromInt
-                        fileId
-            )
-
-        GotNews encoded ->
-            let
-                news =
-                    case D.decodeValue decodeNewsList encoded of
-                        Ok value ->
-                            value
-
-                        Err _ ->
-                            []
-            in
-            ( { model | news = news }
-            , Cmd.none
-            )
-
-        GotFilm encoded ->
-            ( model
-            , case D.decodeValue decodeFilm encoded of
-                Ok value ->
-                    case value of
-                        Just filmId ->
-                            videoSourceRequest <|
-                                E.string <|
-                                    String.fromInt
-                                        filmId
-
-                        Nothing ->
-                            let
-                                log =
-                                    Debug.log "No Films found" ""
-                            in
-                            -- TODO Alert about empty data
-                            Cmd.none
-
-                Err message ->
-                    let
-                        log =
-                            Debug.log "Film decode error" message
-                    in
-                    -- TODO Alert about decoder failure
-                    Cmd.none
-            )
-
-        RefreshPlaylist ->
-            ( model
-            , Cmd.batch
-                [ case model.credentials.token of
-                    Just token ->
-                        requestNews <| E.string token
-
-                    Nothing ->
-                        Cmd.none
-                , filmRequest <|
-                    E.string <|
-                        String.fromInt
-                            90
-                ]
-            )
-
-        NavbarMsg state ->
-            ( { model | navbarState = state }, Cmd.none )
-
-
-handleNewsResponse : Result Http.Error (List News) -> List News
-handleNewsResponse response =
-    case response of
-        Ok news ->
-            news
-
-        Err error ->
-            []
 
 
 handleAuthResponse : Result Http.Error AuthResult -> Model -> ( Model, Cmd Msg )
@@ -526,6 +279,441 @@ handleStatusCode code model =
 
         _ ->
             ( model, Cmd.none )
+
+
+
+-- ENCODE DECODE
+
+
+decodeAddNewsResponse : D.Decoder String
+decodeAddNewsResponse =
+    D.field "statusCode" D.string
+
+
+encodeNewsTemplate : CreateNewsTemplate -> E.Value
+encodeNewsTemplate template =
+    E.object
+        [ ( "title", E.string template.title )
+        , ( "description", E.string template.description )
+        , ( "url", E.string template.url )
+        ]
+
+
+decodeFilm : D.Decoder (Maybe Int)
+decodeFilm =
+    D.map List.head
+        (D.list (D.field "id" D.int))
+
+
+decodeNewsList : D.Decoder (List News)
+decodeNewsList =
+    D.list decodeNews
+
+
+decodeNews : D.Decoder News
+decodeNews =
+    D.map3 News
+        (D.field "id" D.int)
+        (D.field "title" D.string)
+        (D.field "fileId" D.int)
+
+
+encodeNewsList : List News -> E.Value
+encodeNewsList news =
+    E.list encodeNews news
+
+
+encodeNews : News -> E.Value
+encodeNews news =
+    E.object
+        [ ( "id", E.int news.id )
+        , ( "title", E.string news.title )
+        , ( "fileId", E.int news.fileId )
+        ]
+
+
+decodeAuthResult : D.Decoder AuthResult
+decodeAuthResult =
+    D.map3 AuthResult
+        (D.field "authToken" D.string)
+        (D.field "expires" D.string)
+        (D.field "isFirstLogin" D.bool)
+
+
+encodeAuthResult : AuthResult -> E.Value
+encodeAuthResult authResult =
+    E.object
+        [ ( "authToken", E.string authResult.authToken )
+        , ( "expires", E.string authResult.expires )
+        , ( "isFirstLogin", E.bool authResult.isFirstLogin )
+        ]
+
+
+encodeRequestBody : String -> String -> E.Value
+encodeRequestBody email password =
+    E.object
+        [ ( "email", E.string email )
+        , ( "password", E.string password )
+        ]
+
+
+
+-- UPDATE
+
+
+type Msg
+    = InputEmail String
+    | InputPassword String
+    | SignIn
+    | SignOut
+    | GotToken (Result Http.Error AuthResult)
+      -- | GotNews (Result Http.Error (List News))
+    | AlertMsg Alert.Visibility
+    | LoadAuth E.Value
+    | PlayVideo E.Value
+    | Play News
+    | GotNews E.Value
+    | GotFilm E.Value
+    | RefreshPlaylist
+    | NavbarMsg Navbar.State
+    | CloseNewsCreator
+    | ClearNewsFormData
+    | OpenNewsCreator
+    | InputNewsTitle String
+    | InputNewsDescription String
+    | InputNewsUrl String
+    | CreateNews
+    | NewsCreationResponse E.Value
+    | AcceptNews
+    | RejectNews
+    | GotAcceptedNews E.Value
+    | GotRejectedNews E.Value
+
+
+update : Msg -> Model -> ( Model, Cmd Msg )
+update msg model =
+    case msg of
+        InputEmail email ->
+            let
+                credentials =
+                    model.credentials
+            in
+            ( { model | credentials = { credentials | email = email } }, Cmd.none )
+
+        InputPassword password ->
+            let
+                credentials =
+                    model.credentials
+            in
+            ( { model | credentials = { credentials | password = password } }, Cmd.none )
+
+        SignIn ->
+            ( { model | alertVisibility = Alert.closed }
+            , obtainToken model.credentials.email model.credentials.password
+            )
+
+        SignOut ->
+            let
+                credentials =
+                    model.credentials
+
+                emptyAuth =
+                    E.object [ ( "status", E.string "Unauthorized" ) ]
+            in
+            ( { model
+                | credentials =
+                    { credentials
+                        | token = Nothing
+                    }
+              }
+            , saveAuth emptyAuth
+            )
+
+        AlertMsg visibility ->
+            ( { model | alertVisibility = visibility }, Cmd.none )
+
+        GotToken response ->
+            handleAuthResponse response model
+
+        LoadAuth encoded ->
+            let
+                authResult =
+                    D.decodeValue
+                        decodeAuthResult
+                        encoded
+
+                token =
+                    case authResult of
+                        Ok result ->
+                            Just result.authToken
+
+                        Err _ ->
+                            Nothing
+
+                credentials =
+                    model.credentials
+            in
+            ( { model
+                | credentials =
+                    { credentials | token = token }
+              }
+            , case token of
+                Just value ->
+                    requestNews <| E.string value
+
+                Nothing ->
+                    Cmd.none
+            )
+
+        PlayVideo encoded ->
+            let
+                player =
+                    case
+                        D.decodeValue
+                            (D.field "url" D.string)
+                            encoded
+                    of
+                        Ok url ->
+                            PlayingVideo url
+
+                        Err error ->
+                            Error <| D.errorToString error
+            in
+            ( { model
+                | player =
+                    player
+              }
+            , Cmd.none
+            )
+
+        Play news ->
+            ( { model
+                | selectedNews = Just news
+                , player = LoadingVideo
+              }
+            , filmRequest <|
+                E.string <|
+                    String.fromInt
+                        news.fileId
+            )
+
+        GotNews encoded ->
+            let
+                news =
+                    case D.decodeValue decodeNewsList encoded of
+                        Ok value ->
+                            value
+
+                        Err _ ->
+                            []
+            in
+            ( { model | news = news }
+            , Cmd.none
+            )
+
+        GotFilm encoded ->
+            ( model
+            , case D.decodeValue decodeFilm encoded of
+                Ok value ->
+                    case value of
+                        Just filmId ->
+                            videoSourceRequest <|
+                                E.string <|
+                                    String.fromInt
+                                        filmId
+
+                        Nothing ->
+                            -- let
+                            --     log =
+                            --         Debug.log "No Films found" ""
+                            -- in
+                            -- -- TODO Alert about empty data
+                            Cmd.none
+
+                Err message ->
+                    -- let
+                    --     log =
+                    --         Debug.log "Film decode error" message
+                    -- in
+                    -- TODO Alert about decoder failure
+                    Cmd.none
+            )
+
+        RefreshPlaylist ->
+            ( model
+            , Cmd.batch
+                [ case model.credentials.token of
+                    Just token ->
+                        requestNews <| E.string token
+
+                    Nothing ->
+                        Cmd.none
+
+                -- , filmRequest <|
+                --     E.string <|
+                --         String.fromInt
+                --             90
+                ]
+            )
+
+        NavbarMsg state ->
+            ( { model | navbarState = state }, Cmd.none )
+
+        CloseNewsCreator ->
+            ( { model | player = Initial }, Cmd.none )
+
+        ClearNewsFormData ->
+            ( { model
+                | player = AddNews
+                , newsTemplate = clearNewsFormData
+              }
+            , Cmd.none
+            )
+
+        OpenNewsCreator ->
+            ( { model | player = AddNews }, Cmd.none )
+
+        InputNewsTitle title ->
+            let
+                origTemplate =
+                    model.newsTemplate
+            in
+            ( { model
+                | newsTemplate =
+                    { origTemplate | title = title }
+              }
+            , Cmd.none
+            )
+
+        InputNewsDescription description ->
+            let
+                origTemplate =
+                    model.newsTemplate
+            in
+            ( { model
+                | newsTemplate =
+                    { origTemplate | description = description }
+              }
+            , Cmd.none
+            )
+
+        InputNewsUrl url ->
+            let
+                origTemplate =
+                    model.newsTemplate
+            in
+            ( { model
+                | newsTemplate =
+                    { origTemplate | url = url }
+              }
+            , Cmd.none
+            )
+
+        CreateNews ->
+            ( { model | createNewsStatus = Busy }
+            , createNewsRequest <|
+                encodeNewsTemplate model.newsTemplate
+            )
+
+        NewsCreationResponse encoded ->
+            let
+                responseStatus =
+                    case D.decodeValue decodeAddNewsResponse encoded of
+                        Ok status ->
+                            if status == "OK" then
+                                Error "News successfuly added"
+
+                            else
+                                Error "Could not add news"
+
+                        Err _ ->
+                            Error "Could not add news"
+            in
+            ( { model
+                | player = responseStatus
+                , createNewsStatus = Ready
+                , newsTemplate = clearNewsFormData
+              }
+            , Cmd.none
+            )
+
+        AcceptNews ->
+            ( model
+            , case model.selectedNews of
+                Just news ->
+                    acceptNewsRequest <|
+                        E.string <|
+                            String.fromInt news.id
+
+                Nothing ->
+                    -- TODO Tell user about this case
+                    Cmd.none
+            )
+
+        RejectNews ->
+            ( model
+            , case model.selectedNews of
+                Just news ->
+                    rejectNewsRequest <|
+                        E.string <|
+                            String.fromInt news.id
+
+                Nothing ->
+                    -- TODO tell user about this case
+                    Cmd.none
+            )
+
+        GotAcceptedNews encoded ->
+            let
+                player =
+                    case
+                        D.decodeValue
+                            (D.field "statusCode" D.string)
+                            encoded
+                    of
+                        Ok message ->
+                            if message == "NO_CONTENT" then
+                                Message "Accepted"
+
+                            else
+                                Error "Failed to accept"
+
+                        Err message ->
+                            Error <| D.errorToString message
+            in
+            ( { model | player = player }, Cmd.none )
+
+        GotRejectedNews encoded ->
+            let
+                player =
+                    case
+                        D.decodeValue
+                            (D.field "statusCode" D.string)
+                            encoded
+                    of
+                        Ok message ->
+                            if message == "NO_CONTENT" then
+                                Message "Rejected"
+
+                            else
+                                Error "Failed to reject"
+
+                        Err err ->
+                            Error <| D.errorToString err
+            in
+            ( { model | player = player }, Cmd.none )
+
+
+
+-- HELPER
+
+
+clearNewsFormData : CreateNewsTemplate
+clearNewsFormData =
+    { title = ""
+    , description = ""
+    , url = ""
+    }
 
 
 
@@ -614,10 +802,16 @@ viewAdmin model =
                         [ Block.text []
                             [ div []
                                 [ Button.button
-                                    [ Button.secondary
+                                    [ Button.primary
                                     , Button.onClick RefreshPlaylist
                                     ]
                                     [ text "Refresh" ]
+                                , Button.button
+                                    [ Button.primary
+                                    , Button.attrs [ Spacing.ml1 ]
+                                    , Button.onClick OpenNewsCreator
+                                    ]
+                                    [ text "Create news" ]
                                 ]
                             ]
                         , Block.text []
@@ -633,25 +827,45 @@ viewAdmin model =
                     Initial ->
                         viewHelpText
 
-                    Source video ->
-                        videoPlayer video
+                    LoadingVideo ->
+                        -- div []
+                        Loading.render
+                            Loading.Spinner
+                            -- LoaderType
+                            { defaultConfig
+                                | color = "#d3869b"
+                                , size = 150
+                            }
+                            -- Config
+                            Loading.On
+
+                    -- LoadingState
+                    -- ]
+                    PlayingVideo url ->
+                        videoPlayer url model.selectedNews
 
                     Error message ->
                         viewErrorMessage message
+
+                    Message message ->
+                        viewMessage message
+
+                    AddNews ->
+                        viewAddNews model
                 ]
             ]
         ]
 
 
-videoPlayer : String -> Html Msg
-videoPlayer source =
+videoPlayer : String -> Maybe News -> Html Msg
+videoPlayer url news =
     div []
         [ div []
             [ video
                 [ width 320
                 , height 240
                 , autoplay True
-                , src source
+                , src url
                 ]
                 []
             ]
@@ -660,11 +874,13 @@ videoPlayer source =
             [ Button.button
                 [ Button.success
                 , Button.attrs [ Spacing.ml1 ]
+                , Button.onClick AcceptNews
                 ]
                 [ text "Accept" ]
             , Button.button
                 [ Button.danger
                 , Button.attrs [ Spacing.ml1 ]
+                , Button.onClick RejectNews
                 ]
                 [ text "Reject" ]
             ]
@@ -683,6 +899,11 @@ viewHelpText =
         ]
 
 
+viewMessage : String -> Html Msg
+viewMessage message =
+    div [] [ h4 [] [ text message ] ]
+
+
 viewErrorMessage : String -> Html Msg
 viewErrorMessage message =
     div []
@@ -695,7 +916,7 @@ viewNews news =
         [ ListGroup.primary
 
         -- , ListGroup.attrs [ onClick (PlayVideo news.source) ]
-        , ListGroup.attrs [ onClick (Play news.fileId) ]
+        , ListGroup.attrs [ onClick (Play news) ]
         ]
         [ text news.title ]
 
@@ -794,3 +1015,108 @@ viewInput request placeholder value command =
 
         _ ->
             regularInput
+
+
+viewAddNews : Model -> Html Msg
+viewAddNews model =
+    Form.form []
+        [ Form.group []
+            [ Form.label [ for "title" ] [ text "Title" ]
+            , Input.text
+                [ Input.id "title"
+                , Input.onInput InputNewsTitle
+                , Input.value model.newsTemplate.title
+                ]
+            ]
+        , Form.group []
+            [ label [ for "description" ] [ text "Description" ]
+            , Textarea.textarea
+                [ Textarea.id "description"
+                , Textarea.rows 3
+                , Textarea.onInput InputNewsDescription
+                , Textarea.value model.newsTemplate.description
+                ]
+            ]
+        , Form.group []
+            [ Form.label [ for "url" ] [ text "Url" ]
+            , Input.text
+                [ Input.id "url"
+                , Input.onInput InputNewsUrl
+                , Input.value model.newsTemplate.url
+                ]
+            ]
+        , viewSaveButton model
+        , Button.button
+            [ Button.warning
+            , Button.attrs [ Spacing.ml1 ]
+            , Button.onClick ClearNewsFormData
+            ]
+            [ text "Clear form" ]
+        , Button.button
+            [ Button.warning
+            , Button.attrs [ Spacing.ml1 ]
+            , Button.onClick CloseNewsCreator
+            ]
+            [ text "Close" ]
+        ]
+
+
+viewSaveButton : Model -> Html Msg
+viewSaveButton model =
+    case model.createNewsStatus of
+        Ready ->
+            viewAddNewsButton model.newsTemplate
+
+        Busy ->
+            viewBusyButton
+
+
+viewAddNewsButton : CreateNewsTemplate -> Html Msg
+viewAddNewsButton template =
+    if
+        template.title
+            == ""
+            || template.description
+            == ""
+            || template.url
+            == ""
+    then
+        Button.button
+            [ Button.primary
+            , Button.disabled True
+            , Button.attrs [ Spacing.ml1 ]
+            ]
+            [ text "Add news" ]
+
+    else
+        Button.button
+            [ Button.primary
+            , Button.attrs [ Spacing.ml1 ]
+            , Button.onClick CreateNews
+            ]
+            [ text "Add news" ]
+
+
+viewBusyButton : Html Msg
+viewBusyButton =
+    Button.button
+        [ Button.primary
+        , Button.disabled True
+        , Button.attrs [ Spacing.mr3 ]
+        ]
+        [ span []
+            [ Loading.render
+                Loading.BouncingBalls
+                -- LoaderType
+                { defaultConfig
+                    | color = "#fabd2f"
+                    , size = 23
+                }
+                -- Config
+                Loading.On
+
+            -- LoadingState
+            ]
+
+        -- , text "Processing"
+        ]

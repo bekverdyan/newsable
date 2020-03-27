@@ -2,8 +2,8 @@
   - Conventional commits
 
 ### Installation
- - `npm i elm`
- - `npm i uglify-js`
+ - `npm install elm -g`
+ - `npm install uglify-js -g`
 
 ### Build
 execute `./build.sh`
