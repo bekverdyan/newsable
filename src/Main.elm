@@ -1125,19 +1125,17 @@ viewBusyButton =
     Button.button
         [ Button.primary
         , Button.disabled True
-        , Button.attrs [ Spacing.mr3 ]
+        , Button.attrs [ Spacing.mr1 ]
         ]
-        [ span []
-            [ Loading.render
-                Loading.BouncingBalls
-                -- LoaderType
-                { defaultConfig
-                    | color = "#fabd2f"
-                    , size = 23
-                }
-                -- Config
-                Loading.On
+        [ Loading.render
+            Loading.BouncingBalls
+            -- LoaderType
+            { defaultConfig
+                | color = "#fabd2f"
+                , size = 23
+            }
+            -- Config
+            Loading.On
 
-            -- LoadingState
-            ]
+        -- LoadingState
         ]
