@@ -560,11 +560,6 @@ update msg model =
 
                     Nothing ->
                         Cmd.none
-
-                -- , filmRequest <|
-                --     E.string <|
-                --         String.fromInt
-                --             90
                 ]
             )
 
@@ -830,8 +825,20 @@ viewDashboard model =
             ]
         |> Card.block []
             [ Block.text []
-                [ ListGroup.custom <|
-                    List.map viewNews model.news
+                [ case model.loadNewsStatus of
+                    LoadedNews ->
+                        ListGroup.custom <|
+                            List.map viewNews model.news
+
+                    LoadingNews ->
+                        Spinner.spinner
+                            [ Spinner.color Text.dark
+                            , Spinner.attrs
+                                [ style "width" "5rem"
+                                , style "height" "5rem"
+                                ]
+                            ]
+                            []
                 ]
             ]
         |> Card.view
