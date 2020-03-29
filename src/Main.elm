@@ -123,8 +123,14 @@ type alias Model =
     , navbarState : Navbar.State
     , newsTemplate : CreateNewsTemplate
     , createNewsStatus : CreateNews
+    , loadNewsStatus : LoadNewsStatus
     , selectedNews : Maybe News
     }
+
+
+type LoadNewsStatus
+    = LoadingNews
+    | LoadedNews
 
 
 type CreateNews
@@ -189,6 +195,7 @@ init _ =
         navbarState
         clearNewsFormData
         Ready
+        LoadingNews
         Nothing
     , navbarCmd
     )
@@ -222,6 +229,7 @@ handleAuthResponse response model =
                 | request = Success
                 , credentials = { credentials | token = Just token }
                 , alertVisibility = Alert.closed
+                , loadNewsStatus = LoadingNews
               }
             , Cmd.batch
                 [ saveAuth <| encodeAuthResult authResult
@@ -508,7 +516,10 @@ update msg model =
                         Err _ ->
                             []
             in
-            ( { model | news = news }
+            ( { model
+                | news = news
+                , loadNewsStatus = LoadedNews
+              }
             , Cmd.none
             )
 
@@ -541,7 +552,7 @@ update msg model =
             )
 
         RefreshPlaylist ->
-            ( model
+            ( { model | loadNewsStatus = LoadingNews }
             , Cmd.batch
                 [ case model.credentials.token of
                     Just token ->
@@ -808,12 +819,7 @@ viewDashboard model =
         [ Card.align Text.alignXsCenter ]
         |> Card.header []
             [ div []
-                [ Button.button
-                    [ Button.primary
-                    , Button.attrs [ Spacing.mr3 ]
-                    , Button.onClick RefreshPlaylist
-                    ]
-                    [ text "Refresh" ]
+                [ viewRefreshButton model.loadNewsStatus
                 , Button.button
                     [ Button.primary
                     , Button.attrs [ Spacing.ml3 ]
@@ -829,6 +835,33 @@ viewDashboard model =
                 ]
             ]
         |> Card.view
+
+
+viewRefreshButton : LoadNewsStatus -> Html Msg
+viewRefreshButton status =
+    case status of
+        LoadedNews ->
+            Button.button
+                [ Button.primary
+                , Button.attrs [ Spacing.mr3 ]
+                , Button.onClick RefreshPlaylist
+                ]
+                [ text "Refresh" ]
+
+        LoadingNews ->
+            Button.button
+                [ Button.primary
+                , Button.disabled True
+                , Button.attrs [ Spacing.mr3 ]
+                ]
+                [ Spinner.spinner
+                    [ Spinner.small
+                    , Spinner.color Text.warning
+                    , Spinner.attrs [ Spacing.mr1 ]
+                    ]
+                    []
+                , text "Loading..."
+                ]
 
 
 viewEditor : Model -> Html Msg
