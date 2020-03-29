@@ -881,12 +881,14 @@ viewEditor model =
     case model.editor of
         Initial ->
             Card.config [ Card.attrs [ width 20 ] ]
-                |> Card.header [ class "text-center" ]
-                    [ h3 [ Spacing.mt2 ]
-                        [ text <|
-                            "Click to one of the"
-                                ++ " videos listed in the"
-                                ++ " left to play it !"
+                |> Card.block []
+                    [ Block.text [ class "text-center" ]
+                        [ h3 [ Spacing.mt2 ]
+                            [ text <|
+                                "Click to one of the"
+                                    ++ " videos listed in the"
+                                    ++ " left to play it !"
+                            ]
                         ]
                     ]
                 |> Card.view
@@ -894,15 +896,27 @@ viewEditor model =
         LoadingVideo ->
             Card.config [ Card.attrs [ width 20 ] ]
                 |> Card.header [ class "text-center" ]
-                    [ Loading.render
-                        Loading.Spinner
-                        -- LoaderType
-                        { defaultConfig
-                            | color = "#d3869b"
-                            , size = 150
-                        }
-                        -- Config
-                        Loading.On
+                    [ h4 []
+                        [ case model.selectedNews of
+                            Just news ->
+                                text news.title
+
+                            Nothing ->
+                                text "Video has no title"
+                        ]
+                    ]
+                |> Card.block []
+                    [ Block.text [ class "text-center" ]
+                        [ Loading.render
+                            Loading.Spinner
+                            -- LoaderType
+                            { defaultConfig
+                                | color = "#d3869b"
+                                , size = 150
+                            }
+                            -- Config
+                            Loading.On
+                        ]
                     ]
                 |> Card.view
 
@@ -916,7 +930,16 @@ viewEditor model =
                 , Card.attrs [ width 20 ]
                 ]
                 |> Card.header [ class "text-center" ]
-                    [ video ]
+                    [ h4 []
+                        [ case model.selectedNews of
+                            Just news ->
+                                text news.title
+
+                            Nothing ->
+                                text "Video has no title"
+                        ]
+                    ]
+                |> Card.block [] [ Block.text [] [ video ] ]
                 |> Card.footer [] [ actions ]
                 |> Card.view
 
