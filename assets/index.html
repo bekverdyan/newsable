@@ -17,21 +17,16 @@
     <div id="elm"></div>
   </div>
   <script>
-    let app = Elm.Main.init({
+    var app = Elm.Main.init({
       node: document.getElementById('elm')
     });
 
-    let auth = localStorage.getItem('auth');
-    let parsedAuth = auth ? JSON.parse(auth) : null;
-    let token =  parsedAuth.authToken;
+    var auth = localStorage.getItem('auth');
+    var parsedAuth = auth ? JSON.parse(auth) : null;
 
     app.ports.saveAuth.subscribe(function (data) {
       localStorage.setItem('auth', JSON.stringify(data));
     });
-
-
-    let news = localStorage.getItem('news');
-    let parsedNews = news ? JSON.parse(news) : null;
 
     app.ports.loadAuth.send(parsedAuth);
 
@@ -63,7 +58,7 @@
       Http.open("GET", serverAddress + "/films/" + filmId);
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', token);
+      Http.setRequestHeader('Authorization', parsedAuth.authToken);
 
       Http.send();
 
@@ -81,7 +76,7 @@
       Http.open("GET", serverAddress + "/files/forweb/" + fileId);
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', token);
+      Http.setRequestHeader('Authorization', parsedAuth.authToken);
 
       Http.send();
 
@@ -100,7 +95,7 @@
       Http.open("POST", serverAddress + "/textnews/add");
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', token);
+      Http.setRequestHeader('Authorization', parsedAuth.authToken);
 
       Http.send(JSON.stringify(news));
 
@@ -118,7 +113,7 @@
       Http.open("POST", serverAddress + "/news/" + newsId + "/accept");
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', token);
+      Http.setRequestHeader('Authorization', parsedAuth.authToken);
 
       Http.send();
 
@@ -137,7 +132,7 @@
       Http.open("POST", serverAddress + "/news/" + newsId + "/reject");
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', token);
+      Http.setRequestHeader('Authorization', parsedAuth.authToken);
 
       Http.send();
 
