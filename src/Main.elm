@@ -810,6 +810,11 @@ viewAdmin model =
 
 viewDashboard : Model -> Html Msg
 viewDashboard model =
+    let
+        viewNews : News -> ListGroup.CustomItem Msg
+        viewNews news =
+            viewNewsInteractive news model.selectedNews
+    in
     Card.config
         [ Card.align Text.alignXsCenter ]
         |> Card.header []
@@ -975,10 +980,23 @@ videoPlayer url value =
     )
 
 
-viewNews : News -> ListGroup.CustomItem Msg
-viewNews news =
+viewNewsInteractive : News -> Maybe News -> ListGroup.CustomItem Msg
+viewNewsInteractive news selectedNews =
+    let
+        itemStyle =
+            case selectedNews of
+                Just value ->
+                    if value.id == news.id then
+                        ListGroup.warning
+
+                    else
+                        ListGroup.primary
+
+                Nothing ->
+                    ListGroup.primary
+    in
     ListGroup.button
-        [ ListGroup.primary
+        [ itemStyle
         , ListGroup.attrs [ onClick (Play news) ]
         ]
         [ text news.title ]
