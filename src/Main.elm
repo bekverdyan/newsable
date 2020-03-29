@@ -1127,15 +1127,11 @@ viewBusyButton =
         , Button.disabled True
         , Button.attrs [ Spacing.mr1 ]
         ]
-        [ Loading.render
-            Loading.BouncingBalls
-            -- LoaderType
-            { defaultConfig
-                | color = "#fabd2f"
-                , size = 23
-            }
-            -- Config
-            Loading.On
-
-        -- LoadingState
+        [ Spinner.spinner
+            [ Spinner.small
+            , Spinner.color Text.warning
+            , Spinner.attrs [ Spacing.mr1 ]
+            ]
+            []
+        , text "Saving..."
         ]
