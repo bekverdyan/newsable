@@ -16,6 +16,7 @@ import Bootstrap.ListGroup as ListGroup
 import Bootstrap.Modal as Modal
 import Bootstrap.Navbar as Navbar
 import Bootstrap.Spinner as Spinner
+import Bootstrap.Text as Text
 import Bootstrap.Utilities.Spacing as Spacing
 import Browser
 import Html exposing (..)
@@ -118,12 +119,18 @@ type alias Model =
     , request : Request
     , alertVisibility : Alert.Visibility
     , news : List News
-    , player : Player
+    , editor : Editor
     , navbarState : Navbar.State
     , newsTemplate : CreateNewsTemplate
     , createNewsStatus : CreateNews
+    , loadNewsStatus : LoadNewsStatus
     , selectedNews : Maybe News
     }
+
+
+type LoadNewsStatus
+    = LoadingNews
+    | LoadedNews
 
 
 type CreateNews
@@ -138,7 +145,7 @@ type alias CreateNewsTemplate =
     }
 
 
-type Player
+type Editor
     = Initial
     | LoadingVideo
     | PlayingVideo String
@@ -188,6 +195,7 @@ init _ =
         navbarState
         clearNewsFormData
         Ready
+        LoadingNews
         Nothing
     , navbarCmd
     )
@@ -221,6 +229,7 @@ handleAuthResponse response model =
                 | request = Success
                 , credentials = { credentials | token = Just token }
                 , alertVisibility = Alert.closed
+                , loadNewsStatus = LoadingNews
               }
             , Cmd.batch
                 [ saveAuth <| encodeAuthResult authResult
@@ -467,7 +476,7 @@ update msg model =
 
         PlayVideo encoded ->
             let
-                player =
+                editor =
                     case
                         D.decodeValue
                             (D.field "url" D.string)
@@ -480,8 +489,8 @@ update msg model =
                             Error <| D.errorToString error
             in
             ( { model
-                | player =
-                    player
+                | editor =
+                    editor
               }
             , Cmd.none
             )
@@ -489,12 +498,21 @@ update msg model =
         Play news ->
             ( { model
                 | selectedNews = Just news
-                , player = LoadingVideo
+                , editor = LoadingVideo
               }
-            , filmRequest <|
-                E.string <|
-                    String.fromInt
-                        news.fileId
+            , case model.credentials.token of
+                Just token ->
+                    filmRequest <|
+                        E.object
+                            [ ( "filmId"
+                              , E.string <|
+                                    String.fromInt news.fileId
+                              )
+                            , ( "token", E.string token )
+                            ]
+
+                Nothing ->
+                    Cmd.none
             )
 
         GotNews encoded ->
@@ -507,7 +525,10 @@ update msg model =
                         Err _ ->
                             []
             in
-            ( { model | news = news }
+            ( { model
+                | news = news
+                , loadNewsStatus = LoadedNews
+              }
             , Cmd.none
             )
 
@@ -517,10 +538,20 @@ update msg model =
                 Ok value ->
                     case value of
                         Just filmId ->
-                            videoSourceRequest <|
-                                E.string <|
-                                    String.fromInt
-                                        filmId
+                            case model.credentials.token of
+                                Just token ->
+                                    videoSourceRequest <|
+                                        E.object
+                                            [ ( "fileId"
+                                              , E.string <|
+                                                    String.fromInt
+                                                        filmId
+                                              )
+                                            , ( "token", E.string token )
+                                            ]
+
+                                Nothing ->
+                                    Cmd.none
 
                         Nothing ->
                             -- let
@@ -540,7 +571,7 @@ update msg model =
             )
 
         RefreshPlaylist ->
-            ( model
+            ( { model | loadNewsStatus = LoadingNews }
             , Cmd.batch
                 [ case model.credentials.token of
                     Just token ->
@@ -548,11 +579,6 @@ update msg model =
 
                     Nothing ->
                         Cmd.none
-
-                -- , filmRequest <|
-                --     E.string <|
-                --         String.fromInt
-                --             90
                 ]
             )
 
@@ -560,18 +586,18 @@ update msg model =
             ( { model | navbarState = state }, Cmd.none )
 
         CloseNewsCreator ->
-            ( { model | player = Initial }, Cmd.none )
+            ( { model | editor = Initial }, Cmd.none )
 
         ClearNewsFormData ->
             ( { model
-                | player = AddNews
+                | editor = AddNews
                 , newsTemplate = clearNewsFormData
               }
             , Cmd.none
             )
 
         OpenNewsCreator ->
-            ( { model | player = AddNews }, Cmd.none )
+            ( { model | editor = AddNews }, Cmd.none )
 
         InputNewsTitle title ->
             let
@@ -611,8 +637,16 @@ update msg model =
 
         CreateNews ->
             ( { model | createNewsStatus = Busy }
-            , createNewsRequest <|
-                encodeNewsTemplate model.newsTemplate
+            , case model.credentials.token of
+                Just token ->
+                    createNewsRequest <|
+                        E.object
+                            [ ( "news", encodeNewsTemplate model.newsTemplate )
+                            , ( "token", E.string token )
+                            ]
+
+                Nothing ->
+                    Cmd.none
             )
 
         NewsCreationResponse encoded ->
@@ -630,7 +664,7 @@ update msg model =
                             Error "Could not add news"
             in
             ( { model
-                | player = responseStatus
+                | editor = responseStatus
                 , createNewsStatus = Ready
                 , newsTemplate = clearNewsFormData
               }
@@ -641,9 +675,19 @@ update msg model =
             ( model
             , case model.selectedNews of
                 Just news ->
-                    acceptNewsRequest <|
-                        E.string <|
-                            String.fromInt news.id
+                    case model.credentials.token of
+                        Just token ->
+                            acceptNewsRequest <|
+                                E.object
+                                    [ ( "newsId"
+                                      , E.string <|
+                                            String.fromInt news.id
+                                      )
+                                    , ( "token", E.string token )
+                                    ]
+
+                        Nothing ->
+                            Cmd.none
 
                 Nothing ->
                     -- TODO Tell user about this case
@@ -654,9 +698,19 @@ update msg model =
             ( model
             , case model.selectedNews of
                 Just news ->
-                    rejectNewsRequest <|
-                        E.string <|
-                            String.fromInt news.id
+                    case model.credentials.token of
+                        Just token ->
+                            rejectNewsRequest <|
+                                E.object
+                                    [ ( "newsId"
+                                      , E.string <|
+                                            String.fromInt news.id
+                                      )
+                                    , ( "token", E.string token )
+                                    ]
+
+                        Nothing ->
+                            Cmd.none
 
                 Nothing ->
                     -- TODO tell user about this case
@@ -665,7 +719,7 @@ update msg model =
 
         GotAcceptedNews encoded ->
             let
-                player =
+                editor =
                     case
                         D.decodeValue
                             (D.field "statusCode" D.string)
@@ -681,11 +735,11 @@ update msg model =
                         Err message ->
                             Error <| D.errorToString message
             in
-            ( { model | player = player }, Cmd.none )
+            ( { model | editor = editor }, Cmd.none )
 
         GotRejectedNews encoded ->
             let
-                player =
+                editor =
                     case
                         D.decodeValue
                             (D.field "statusCode" D.string)
@@ -701,7 +755,7 @@ update msg model =
                         Err err ->
                             Error <| D.errorToString err
             in
-            ( { model | player = player }, Cmd.none )
+            ( { model | editor = editor }, Cmd.none )
 
 
 
@@ -795,41 +849,112 @@ viewAdmin : Model -> Html Msg
 viewAdmin model =
     Grid.container []
         [ Grid.row []
-            [ Grid.col
-                []
-                [ Card.config []
-                    |> Card.block []
-                        [ Block.text []
-                            [ div []
-                                [ Button.button
-                                    [ Button.primary
-                                    , Button.onClick RefreshPlaylist
-                                    ]
-                                    [ text "Refresh" ]
-                                , Button.button
-                                    [ Button.primary
-                                    , Button.attrs [ Spacing.ml1 ]
-                                    , Button.onClick OpenNewsCreator
-                                    ]
-                                    [ text "Create news" ]
+            [ Grid.col [] [ viewDashboard model ]
+            , Grid.col [] [ viewEditor model ]
+            ]
+        ]
+
+
+viewDashboard : Model -> Html Msg
+viewDashboard model =
+    let
+        viewNews : News -> ListGroup.CustomItem Msg
+        viewNews news =
+            viewNewsInteractive news model.selectedNews
+    in
+    Card.config
+        [ Card.align Text.alignXsCenter ]
+        |> Card.header []
+            [ div []
+                [ viewRefreshButton model.loadNewsStatus
+                , Button.button
+                    [ Button.primary
+                    , Button.attrs [ Spacing.ml3 ]
+                    , Button.onClick OpenNewsCreator
+                    ]
+                    [ text "Create news" ]
+                ]
+            ]
+        |> Card.block []
+            [ Block.text []
+                [ case model.loadNewsStatus of
+                    LoadedNews ->
+                        ListGroup.custom <|
+                            List.map viewNews model.news
+
+                    LoadingNews ->
+                        Spinner.spinner
+                            [ Spinner.color Text.dark
+                            , Spinner.attrs
+                                [ style "width" "5rem"
+                                , style "height" "5rem"
                                 ]
                             ]
-                        , Block.text []
-                            [ ListGroup.custom <|
-                                List.map viewNews model.news
+                            []
+                ]
+            ]
+        |> Card.view
+
+
+viewRefreshButton : LoadNewsStatus -> Html Msg
+viewRefreshButton status =
+    case status of
+        LoadedNews ->
+            Button.button
+                [ Button.primary
+                , Button.attrs [ Spacing.mr3 ]
+                , Button.onClick RefreshPlaylist
+                ]
+                [ text "Refresh" ]
+
+        LoadingNews ->
+            Button.button
+                [ Button.primary
+                , Button.disabled True
+                , Button.attrs [ Spacing.mr3 ]
+                ]
+                [ Spinner.spinner
+                    [ Spinner.small
+                    , Spinner.color Text.warning
+                    , Spinner.attrs [ Spacing.mr1 ]
+                    ]
+                    []
+                , text "Loading..."
+                ]
+
+
+viewEditor : Model -> Html Msg
+viewEditor model =
+    case model.editor of
+        Initial ->
+            Card.config [ Card.attrs [ width 20 ] ]
+                |> Card.block []
+                    [ Block.text [ class "text-center" ]
+                        [ h3 [ Spacing.mt2 ]
+                            [ text <|
+                                "Click to one of the"
+                                    ++ " videos listed in the"
+                                    ++ " left to play it !"
                             ]
                         ]
-                    |> Card.view
-                ]
-            , Grid.col
-                []
-                [ case model.player of
-                    Initial ->
-                        viewHelpText
+                    ]
+                |> Card.view
 
-                    LoadingVideo ->
-                        -- div []
-                        Loading.render
+        LoadingVideo ->
+            Card.config [ Card.attrs [ width 20 ] ]
+                |> Card.header [ class "text-center" ]
+                    [ h4 []
+                        [ case model.selectedNews of
+                            Just news ->
+                                text news.title
+
+                            Nothing ->
+                                text "Video has no title"
+                        ]
+                    ]
+                |> Card.block []
+                    [ Block.text [ class "text-center" ]
+                        [ Loading.render
                             Loading.Spinner
                             -- LoaderType
                             { defaultConfig
@@ -838,84 +963,110 @@ viewAdmin model =
                             }
                             -- Config
                             Loading.On
+                        ]
+                    ]
+                |> Card.view
 
-                    -- LoadingState
-                    -- ]
-                    PlayingVideo url ->
-                        videoPlayer url model.selectedNews
-
-                    Error message ->
-                        viewErrorMessage message
-
-                    Message message ->
-                        viewMessage message
-
-                    AddNews ->
-                        viewAddNews model
+        PlayingVideo url ->
+            let
+                ( video, actions ) =
+                    videoPlayer url model.selectedNews
+            in
+            Card.config
+                [ Card.align Text.alignXsCenter
+                , Card.attrs [ width 20 ]
                 ]
-            ]
-        ]
+                |> Card.header [ class "text-center" ]
+                    [ h4 []
+                        [ case model.selectedNews of
+                            Just news ->
+                                text news.title
+
+                            Nothing ->
+                                text "Video has no title"
+                        ]
+                    ]
+                |> Card.block [] [ Block.text [] [ video ] ]
+                |> Card.footer [] [ actions ]
+                |> Card.view
+
+        Error message ->
+            Card.config [ Card.attrs [ width 20 ] ]
+                |> Card.header [ class "text-center" ]
+                    [ h3 [ Spacing.mt2 ] [ text message ] ]
+                |> Card.view
+
+        Message message ->
+            Card.config [ Card.attrs [ width 20 ] ]
+                |> Card.header [ class "text-center" ]
+                    [ h3 [ Spacing.mt2 ] [ text message ] ]
+                |> Card.view
+
+        AddNews ->
+            Card.config [ Card.attrs [ width 20 ] ]
+                |> Card.header [ class "text-center" ]
+                    [ viewAddNews model ]
+                |> Card.view
 
 
-videoPlayer : String -> Maybe News -> Html Msg
-videoPlayer url news =
-    div []
-        [ div []
-            [ video
-                [ width 320
-                , height 240
-                , autoplay True
-                , src url
-                ]
-                []
+videoPlayer : String -> Maybe News -> ( Html Msg, Html Msg )
+videoPlayer url value =
+    let
+        actionButton : String -> Msg -> Button.Option Msg -> Attribute Msg -> Html Msg
+        actionButton name msg color attribute =
+            case value of
+                Just news ->
+                    Button.button
+                        (color
+                            :: [ Button.attrs [ attribute ]
+                               , Button.onClick msg
+                               ]
+                        )
+                        [ text name ]
+
+                Nothing ->
+                    Button.button
+                        (color
+                            :: [ Button.disabled True
+                               , Button.attrs [ attribute ]
+                               , Button.onClick msg
+                               ]
+                        )
+                        [ text name ]
+    in
+    ( div []
+        [ video
+            [ width 320
+            , height 240
+            , autoplay True
+            , src url
             ]
-        , div
             []
-            [ Button.button
-                [ Button.success
-                , Button.attrs [ Spacing.ml1 ]
-                , Button.onClick AcceptNews
-                ]
-                [ text "Accept" ]
-            , Button.button
-                [ Button.danger
-                , Button.attrs [ Spacing.ml1 ]
-                , Button.onClick RejectNews
-                ]
-                [ text "Reject" ]
-            ]
         ]
-
-
-viewHelpText : Html Msg
-viewHelpText =
-    div []
-        [ h3 []
-            [ text <|
-                "Click to one of the"
-                    ++ " videos listed in the"
-                    ++ " left to play it !"
-            ]
+    , div []
+        [ actionButton "Accept" AcceptNews Button.success Spacing.mr3
+        , actionButton "Reject" RejectNews Button.danger Spacing.ml3
         ]
+    )
 
 
-viewMessage : String -> Html Msg
-viewMessage message =
-    div [] [ h4 [] [ text message ] ]
+viewNewsInteractive : News -> Maybe News -> ListGroup.CustomItem Msg
+viewNewsInteractive news selectedNews =
+    let
+        itemStyle =
+            case selectedNews of
+                Just value ->
+                    if value.id == news.id then
+                        ListGroup.warning
 
+                    else
+                        ListGroup.primary
 
-viewErrorMessage : String -> Html Msg
-viewErrorMessage message =
-    div []
-        [ h3 [] [ text message ] ]
-
-
-viewNews : News -> ListGroup.CustomItem Msg
-viewNews news =
+                Nothing ->
+                    ListGroup.primary
+    in
     ListGroup.button
-        [ ListGroup.primary
-
-        -- , ListGroup.attrs [ onClick (PlayVideo news.source) ]
+        [ itemStyle
         , ListGroup.attrs [ onClick (Play news) ]
         ]
         [ text news.title ]
@@ -1102,21 +1253,13 @@ viewBusyButton =
     Button.button
         [ Button.primary
         , Button.disabled True
-        , Button.attrs [ Spacing.mr3 ]
+        , Button.attrs [ Spacing.mr1 ]
         ]
-        [ span []
-            [ Loading.render
-                Loading.BouncingBalls
-                -- LoaderType
-                { defaultConfig
-                    | color = "#fabd2f"
-                    , size = 23
-                }
-                -- Config
-                Loading.On
-
-            -- LoadingState
+        [ Spinner.spinner
+            [ Spinner.small
+            , Spinner.color Text.warning
+            , Spinner.attrs [ Spacing.mr1 ]
             ]
-
-        -- , text "Processing"
+            []
+        , text "Saving..."
         ]

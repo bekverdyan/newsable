@@ -6,9 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 
   <link rel="stylesheet"
-        href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
-        integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm"
-        crossorigin="anonymous">
+    href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+    integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh"
+    crossorigin="anonymous">
   <script src="newsable.min.js"></script>
 </head>
 
@@ -17,25 +17,18 @@
     <div id="elm"></div>
   </div>
   <script>
-    let app = Elm.Main.init({
+    var app = Elm.Main.init({
       node: document.getElementById('elm')
     });
 
-    const token = function() {
-      const auth = localStorage.getItem('auth');
-      const parsedAuth = auth ? JSON.parse(auth) : null;
-      return parsedAuth.authToken;
-    }
+    var auth = localStorage.getItem('auth');
+    var parsedAuth = auth ? JSON.parse(auth) : null;
 
     app.ports.saveAuth.subscribe(function (data) {
       localStorage.setItem('auth', JSON.stringify(data));
     });
 
-
-    let news = localStorage.getItem('news');
-    let parsedNews = news ? JSON.parse(news) : null;
-
-    app.ports.loadAuth.send(token);
+    app.ports.loadAuth.send(parsedAuth);
 
     const serverAddress = 'http://3.120.74.192:9090/rest';
 
@@ -59,13 +52,13 @@
 
     });
 
-    app.ports.filmRequest.subscribe(function (filmId) {
+    app.ports.filmRequest.subscribe(function (data) {
       const Http = new XMLHttpRequest();
 
-      Http.open("GET", serverAddress + "/films/" + filmId);
+      Http.open("GET", serverAddress + "/films/" + data.filmId);
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', token());
+      Http.setRequestHeader('Authorization', data.token);
 
       Http.send();
 
@@ -77,13 +70,13 @@
       };
     });
 
-    app.ports.videoSourceRequest.subscribe(function (fileId) {
+    app.ports.videoSourceRequest.subscribe(function (data) {
       const Http = new XMLHttpRequest();
 
-      Http.open("GET", serverAddress + "/files/forweb/" + fileId);
+      Http.open("GET", serverAddress + "/files/forweb/" + data.fileId);
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', token());
+      Http.setRequestHeader('Authorization', data.token);
 
       Http.send();
 
@@ -96,15 +89,15 @@
 
     });
 
-    app.ports.createNewsRequest.subscribe(function (news) {
+    app.ports.createNewsRequest.subscribe(function (data) {
       const Http = new XMLHttpRequest();
 
       Http.open("POST", serverAddress + "/textnews/add");
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', token());
+      Http.setRequestHeader('Authorization', data.token);
 
-      Http.send(JSON.stringify(news));
+      Http.send(JSON.stringify(data.news));
 
       Http.onreadystatechange = (e) => {
         if (Http.readyState === XMLHttpRequest.DONE) {
@@ -114,13 +107,13 @@
       };
     });
 
-    app.ports.acceptNewsRequest.subscribe(function (newsId) {
+    app.ports.acceptNewsRequest.subscribe(function (data) {
       const Http = new XMLHttpRequest();
 
-      Http.open("POST", serverAddress + "/news/" + newsId + "/accept");
+      Http.open("POST", serverAddress + "/news/" + data.newsId + "/accept");
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', token());
+      Http.setRequestHeader('Authorization', data.token);
 
       Http.send();
 
@@ -133,13 +126,13 @@
       };
     });
 
-    app.ports.rejectNewsRequest.subscribe(function (newsId) {
+    app.ports.rejectNewsRequest.subscribe(function (data) {
       const Http = new XMLHttpRequest();
 
-      Http.open("POST", serverAddress + "/news/" + newsId + "/reject");
+      Http.open("POST", serverAddress + "/news/" + data.newsId + "/reject");
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', token());
+      Http.setRequestHeader('Authorization', data.token);
 
       Http.send();
 
