@@ -500,10 +500,19 @@ update msg model =
                 | selectedNews = Just news
                 , editor = LoadingVideo
               }
-            , filmRequest <|
-                E.string <|
-                    String.fromInt
-                        news.fileId
+            , case model.credentials.token of
+                Just token ->
+                    filmRequest <|
+                        E.object
+                            [ ( "filmId"
+                              , E.string <|
+                                    String.fromInt news.fileId
+                              )
+                            , ( "token", E.string token )
+                            ]
+
+                Nothing ->
+                    Cmd.none
             )
 
         GotNews encoded ->
@@ -529,10 +538,20 @@ update msg model =
                 Ok value ->
                     case value of
                         Just filmId ->
-                            videoSourceRequest <|
-                                E.string <|
-                                    String.fromInt
-                                        filmId
+                            case model.credentials.token of
+                                Just token ->
+                                    videoSourceRequest <|
+                                        E.object
+                                            [ ( "fileId"
+                                              , E.string <|
+                                                    String.fromInt
+                                                        filmId
+                                              )
+                                            , ( "token", E.string token )
+                                            ]
+
+                                Nothing ->
+                                    Cmd.none
 
                         Nothing ->
                             -- let
@@ -618,8 +637,16 @@ update msg model =
 
         CreateNews ->
             ( { model | createNewsStatus = Busy }
-            , createNewsRequest <|
-                encodeNewsTemplate model.newsTemplate
+            , case model.credentials.token of
+                Just token ->
+                    createNewsRequest <|
+                        E.object
+                            [ ( "news", encodeNewsTemplate model.newsTemplate )
+                            , ( "token", E.string token )
+                            ]
+
+                Nothing ->
+                    Cmd.none
             )
 
         NewsCreationResponse encoded ->
@@ -648,9 +675,19 @@ update msg model =
             ( model
             , case model.selectedNews of
                 Just news ->
-                    acceptNewsRequest <|
-                        E.string <|
-                            String.fromInt news.id
+                    case model.credentials.token of
+                        Just token ->
+                            acceptNewsRequest <|
+                                E.object
+                                    [ ( "newsId"
+                                      , E.string <|
+                                            String.fromInt news.id
+                                      )
+                                    , ( "token", E.string token )
+                                    ]
+
+                        Nothing ->
+                            Cmd.none
 
                 Nothing ->
                     -- TODO Tell user about this case
@@ -661,9 +698,19 @@ update msg model =
             ( model
             , case model.selectedNews of
                 Just news ->
-                    rejectNewsRequest <|
-                        E.string <|
-                            String.fromInt news.id
+                    case model.credentials.token of
+                        Just token ->
+                            rejectNewsRequest <|
+                                E.object
+                                    [ ( "newsId"
+                                      , E.string <|
+                                            String.fromInt news.id
+                                      )
+                                    , ( "token", E.string token )
+                                    ]
+
+                        Nothing ->
+                            Cmd.none
 
                 Nothing ->
                     -- TODO tell user about this case
