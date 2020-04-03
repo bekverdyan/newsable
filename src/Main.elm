@@ -13,7 +13,6 @@ import Bootstrap.Grid as Grid
 import Bootstrap.Grid.Col as Col
 import Bootstrap.Grid.Row as Row
 import Bootstrap.ListGroup as ListGroup
-import Bootstrap.Modal as Modal
 import Bootstrap.Navbar as Navbar
 import Bootstrap.Spinner as Spinner
 import Bootstrap.Text as Text
@@ -125,7 +124,40 @@ type alias Model =
     , createNewsStatus : CreateNews
     , loadNewsStatus : LoadNewsStatus
     , selectedNews : Maybe News
+    , pageState : PageState
     }
+
+
+type alias PageState =
+    { start : Int
+    , count : Int
+    , previous : Page
+    , current : Page
+    , next : Page
+    , newsStatus : NewsStatus
+    , requestor : NewsRequestor
+    }
+
+
+type NewsRequestor
+    = Start
+    | Previous
+    | Current
+    | Next
+    | NoOne
+
+
+type Page
+    = Empty
+    | LoadingPage
+    | ErrorToLoad String
+    | Data (List News)
+
+
+type NewsStatus
+    = Undefined
+    | Accepted
+    | Rejected
 
 
 type LoadNewsStatus
@@ -197,6 +229,14 @@ init _ =
         Ready
         LoadingNews
         Nothing
+        { start = 0
+        , count = 15
+        , previous = Empty
+        , current = Empty
+        , next = Empty
+        , newsStatus = Undefined
+        , requestor = Current
+        }
     , navbarCmd
     )
 
@@ -233,7 +273,14 @@ handleAuthResponse response model =
               }
             , Cmd.batch
                 [ saveAuth <| encodeAuthResult authResult
-                , requestNews <| E.string token
+                , requestNews <|
+                    encodeNewsRequest
+                        (toQueryString
+                            0
+                            15
+                            Nothing
+                        )
+                        token
                 ]
             )
 
@@ -290,8 +337,87 @@ handleStatusCode code model =
             ( model, Cmd.none )
 
 
+handleIncomingNews : E.Value -> PageState -> PageState
+handleIncomingNews encoded page =
+    let
+        decoded =
+            D.decodeValue decodeNewsList encoded
+
+        toString : D.Error -> Page
+        toString error =
+            ErrorToLoad <| D.errorToString error
+    in
+    case page.requestor of
+        Start ->
+            case decoded of
+                Ok news ->
+                    { page
+                        | current = Data news
+                        , requestor = NoOne
+                    }
+
+                Err err ->
+                    { page
+                        | current = toString err
+                        , requestor = NoOne
+                    }
+
+        Previous ->
+            case decoded of
+                Ok news ->
+                    { page
+                        | previous = Data news
+                        , requestor = NoOne
+                    }
+
+                Err err ->
+                    { page
+                        | previous = toString err
+                        , requestor = NoOne
+                    }
+
+        Current ->
+            case decoded of
+                Ok news ->
+                    { page
+                        | current = Data news
+                        , requestor = NoOne
+                    }
+
+                Err err ->
+                    { page
+                        | current = toString err
+                        , requestor = NoOne
+                    }
+
+        Next ->
+            case decoded of
+                Ok news ->
+                    { page
+                        | next = Data news
+                        , requestor = NoOne
+                    }
+
+                Err err ->
+                    { page
+                        | next = toString err
+                        , requestor = NoOne
+                    }
+
+        NoOne ->
+            page
+
+
 
 -- ENCODE DECODE
+
+
+encodeNewsRequest : String -> String -> E.Value
+encodeNewsRequest query token =
+    E.object
+        [ ( "query", E.string query )
+        , ( "token", E.string token )
+        ]
 
 
 decodeAddNewsResponse : D.Decoder String
@@ -376,7 +502,6 @@ type Msg
     | SignIn
     | SignOut
     | GotToken (Result Http.Error AuthResult)
-      -- | GotNews (Result Http.Error (List News))
     | AlertMsg Alert.Visibility
     | LoadAuth E.Value
     | PlayVideo E.Value
@@ -397,6 +522,9 @@ type Msg
     | RejectNews
     | GotAcceptedNews E.Value
     | GotRejectedNews E.Value
+    | ToStartPage
+    | ToPreviousPage
+    | ToNextPage
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -468,7 +596,14 @@ update msg model =
               }
             , case token of
                 Just value ->
-                    requestNews <| E.string value
+                    requestNews <|
+                        encodeNewsRequest
+                            (toQueryString
+                                0
+                                15
+                                Nothing
+                            )
+                            value
 
                 Nothing ->
                     Cmd.none
@@ -517,19 +652,41 @@ update msg model =
 
         GotNews encoded ->
             let
-                news =
-                    case D.decodeValue decodeNewsList encoded of
-                        Ok value ->
-                            value
+                page =
+                    handleIncomingNews encoded model.pageState
 
-                        Err _ ->
-                            []
+                ( requestor, loaderState, cmd ) =
+                    case model.credentials.token of
+                        Just token ->
+                            case model.pageState.requestor of
+                                Current ->
+                                    ( Next
+                                    , LoadingPage
+                                    , requestNews <|
+                                        encodeNewsRequest
+                                            (toQueryString
+                                                (page.start + 15)
+                                                15
+                                                Nothing
+                                            )
+                                            token
+                                    )
+
+                                _ ->
+                                    ( NoOne, page.next, Cmd.none )
+
+                        Nothing ->
+                            ( NoOne, page.next, Cmd.none )
             in
             ( { model
-                | news = news
+                | pageState =
+                    { page
+                        | requestor = requestor
+                        , next = loaderState
+                    }
                 , loadNewsStatus = LoadedNews
               }
-            , Cmd.none
+            , cmd
             )
 
         GotFilm encoded ->
@@ -575,7 +732,14 @@ update msg model =
             , Cmd.batch
                 [ case model.credentials.token of
                     Just token ->
-                        requestNews <| E.string token
+                        requestNews <|
+                            encodeNewsRequest
+                                (toQueryString
+                                    0
+                                    15
+                                    Nothing
+                                )
+                                token
 
                     Nothing ->
                         Cmd.none
@@ -757,9 +921,152 @@ update msg model =
             in
             ( { model | editor = editor }, Cmd.none )
 
+        ToStartPage ->
+            case model.credentials.token of
+                Just token ->
+                    let
+                        ( page, cmd ) =
+                            toStartPage model.pageState token
+                    in
+                    ( { model | pageState = page }, cmd )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ToPreviousPage ->
+            case model.credentials.token of
+                Just token ->
+                    let
+                        ( page, cmd ) =
+                            toPreviousPage model.pageState token
+                    in
+                    ( { model | pageState = page }, cmd )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ToNextPage ->
+            case model.credentials.token of
+                Just token ->
+                    let
+                        ( page, cmd ) =
+                            toNextPage model.pageState token
+                    in
+                    ( { model | pageState = page }, cmd )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
 
 
 -- HELPER
+
+
+toStartPage : PageState -> String -> ( PageState, Cmd Msg )
+toStartPage page token =
+    ( PageState
+        0
+        page.count
+        Empty
+        LoadingPage
+        Empty
+        page.newsStatus
+        Start
+    , requestNews <|
+        encodeNewsRequest
+            (toQueryString
+                0
+                15
+                Nothing
+            )
+            token
+    )
+
+
+toPreviousPage : PageState -> String -> ( PageState, Cmd Msg )
+toPreviousPage page token =
+    let
+        ( requestor, loadablePage, cmd ) =
+            if page.start - 30 <= 0 then
+                ( NoOne, Empty, Cmd.none )
+
+            else
+                ( Previous
+                , LoadingPage
+                , requestNews <|
+                    encodeNewsRequest
+                        (toQueryString
+                            (page.start - 30)
+                            page.count
+                            Nothing
+                        )
+                        token
+                )
+    in
+    ( PageState
+        (page.start - 15)
+        page.count
+        loadablePage
+        page.previous
+        page.current
+        page.newsStatus
+        requestor
+    , cmd
+    )
+
+
+toNextPage : PageState -> String -> ( PageState, Cmd Msg )
+toNextPage page token =
+    let
+        ( requestor, loadablePage, cmd ) =
+            case page.next of
+                Empty ->
+                    ( NoOne, Empty, Cmd.none )
+
+                _ ->
+                    ( Next
+                    , LoadingPage
+                    , requestNews <|
+                        encodeNewsRequest
+                            (toQueryString
+                                (page.start + 30)
+                                page.count
+                                Nothing
+                            )
+                            token
+                    )
+    in
+    ( PageState
+        (page.start + 15)
+        page.count
+        page.current
+        page.next
+        loadablePage
+        page.newsStatus
+        Next
+    , cmd
+    )
+
+
+toQueryString : Int -> Int -> Maybe Bool -> String
+toQueryString start count accepted =
+    "?start="
+        ++ String.fromInt start
+        ++ "&count="
+        ++ String.fromInt count
+        ++ (case accepted of
+                Just value ->
+                    "&accepted="
+                        ++ (if value then
+                                "true"
+
+                            else
+                                "false"
+                           )
+
+                Nothing ->
+                    ""
+           )
 
 
 clearNewsFormData : CreateNewsTemplate
@@ -879,8 +1186,7 @@ viewDashboard model =
             [ Block.text []
                 [ case model.loadNewsStatus of
                     LoadedNews ->
-                        ListGroup.custom <|
-                            List.map viewNews model.news
+                        viewNewsList model.pageState viewNews
 
                     LoadingNews ->
                         Spinner.spinner
@@ -894,6 +1200,132 @@ viewDashboard model =
                 ]
             ]
         |> Card.view
+
+
+viewNewsList : PageState -> (News -> ListGroup.CustomItem Msg) -> Html Msg
+viewNewsList state viewNews =
+    Card.config
+        [ Card.align Text.alignXsCenter ]
+        |> Card.block []
+            [ Block.text []
+                [ case state.current of
+                    Empty ->
+                        text ""
+
+                    LoadingPage ->
+                        text "Spinner..."
+
+                    Data news ->
+                        ListGroup.custom <|
+                            List.map viewNews news
+
+                    ErrorToLoad msg ->
+                        text msg
+                ]
+            ]
+        |> Card.footer []
+            [ div []
+                [ viewStart state
+                , viewPrevious state
+                , viewNext state
+                ]
+            ]
+        |> Card.view
+
+
+viewStart : PageState -> Html Msg
+viewStart state =
+    if not <| state.start == 0 then
+        case state.requestor of
+            NoOne ->
+                Button.button
+                    [ Button.roleLink
+                    , Button.onClick ToStartPage
+                    ]
+                    [ text "Start" ]
+
+            Start ->
+                Button.button
+                    [ Button.roleLink
+                    , Button.disabled True
+                    ]
+                    [ text "Loading..." ]
+
+            _ ->
+                Button.button
+                    [ Button.roleLink
+                    , Button.disabled True
+                    ]
+                    [ text "Start" ]
+
+    else
+        text ""
+
+
+viewPrevious : PageState -> Html Msg
+viewPrevious state =
+    if not <| state.start == 0 then
+        case state.requestor of
+            NoOne ->
+                Button.button
+                    [ Button.roleLink
+                    , Button.onClick ToPreviousPage
+                    ]
+                    [ text "Previous" ]
+
+            Previous ->
+                Button.button
+                    [ Button.roleLink
+                    , Button.disabled True
+                    ]
+                    [ text "Loading..." ]
+
+            _ ->
+                Button.button
+                    [ Button.roleLink
+                    , Button.disabled True
+                    ]
+                    [ text "Previous" ]
+
+    else
+        text ""
+
+
+viewNext : PageState -> Html Msg
+viewNext state =
+    case state.next of
+        Data news ->
+            case state.requestor of
+                NoOne ->
+                    Button.button
+                        [ Button.roleLink
+                        , Button.onClick ToNextPage
+                        ]
+                        [ text "Next" ]
+
+                Next ->
+                    Button.button
+                        [ Button.roleLink
+                        , Button.disabled True
+                        ]
+                        [ text "Loading.." ]
+
+                _ ->
+                    Button.button
+                        [ Button.roleLink
+                        , Button.disabled True
+                        ]
+                        [ text "Next" ]
+
+        LoadingPage ->
+            Button.button
+                [ Button.roleLink
+                , Button.disabled True
+                ]
+                [ text "Loading.." ]
+
+        _ ->
+            text ""
 
 
 viewRefreshButton : LoadNewsStatus -> Html Msg
