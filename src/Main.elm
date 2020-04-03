@@ -117,12 +117,10 @@ type alias Model =
     { credentials : Credentials
     , request : Request
     , alertVisibility : Alert.Visibility
-    , news : List News
     , editor : Editor
     , navbarState : Navbar.State
     , newsTemplate : CreateNewsTemplate
     , createNewsStatus : CreateNews
-    , loadNewsStatus : LoadNewsStatus
     , selectedNews : Maybe News
     , newsPage : PageState
     }
@@ -149,7 +147,6 @@ type NewsRequestor
 
 type Page
     = Empty
-    | LoadingPage
     | ErrorToLoad String
     | Data (List News)
 
@@ -158,11 +155,6 @@ type NewsStatus
     = Undefined
     | Accepted
     | Rejected
-
-
-type LoadNewsStatus
-    = LoadingNews
-    | LoadedNews
 
 
 type CreateNews
@@ -222,15 +214,13 @@ init _ =
         }
         NotSentYet
         Alert.closed
-        []
         Initial
         navbarState
         clearNewsFormData
         Ready
-        LoadingNews
         Nothing
         { start = 0
-        , count = 15
+        , count = 5
         , previous = Empty
         , current = Empty
         , next = Empty
@@ -269,7 +259,6 @@ handleAuthResponse response model =
                 | request = Success
                 , credentials = { credentials | token = Just token }
                 , alertVisibility = Alert.closed
-                , loadNewsStatus = LoadingNews
               }
             , Cmd.batch
                 [ saveAuth <| encodeAuthResult authResult
@@ -660,13 +649,12 @@ update msg model =
                 page =
                     handleIncomingNews encoded model.newsPage
 
-                ( requestor, loaderState, cmd ) =
+                ( requestor, cmd ) =
                     case model.credentials.token of
                         Just token ->
                             let
                                 process =
                                     ( Next
-                                    , LoadingPage
                                     , requestNews <|
                                         encodeNewsRequest
                                             (toQueryString
@@ -685,18 +673,14 @@ update msg model =
                                     process
 
                                 _ ->
-                                    ( NoOne, page.next, Cmd.none )
+                                    ( NoOne, Cmd.none )
 
                         Nothing ->
-                            ( NoOne, page.next, Cmd.none )
+                            ( NoOne, Cmd.none )
             in
             ( { model
                 | newsPage =
-                    { page
-                        | requestor = requestor
-                        , next = loaderState
-                    }
-                , loadNewsStatus = LoadedNews
+                    { page | requestor = requestor }
               }
             , cmd
             )
@@ -745,8 +729,7 @@ update msg model =
                     model.newsPage
             in
             ( { model
-                | loadNewsStatus = LoadingNews
-                , newsPage = { page | requestor = Current }
+                | newsPage = { page | requestor = Current }
               }
             , Cmd.batch
                 [ case model.credentials.token of
@@ -987,7 +970,7 @@ toStartPage page token =
         0
         page.count
         Empty
-        LoadingPage
+        Empty
         Empty
         page.newsStatus
         Start
@@ -1005,43 +988,45 @@ toStartPage page token =
 toPreviousPage : PageState -> String -> ( PageState, Cmd Msg )
 toPreviousPage page token =
     let
-        ( requestor, decrement ) =
-            if page.start - (page.count * 2) <= 0 then
-                ( Current, page.count )
+        ( requestor, cmd ) =
+            case page.previous of
+                Empty ->
+                    ( NoOne, Cmd.none )
 
-            else
-                ( Previous, page.count * 2 )
+                _ ->
+                    ( Previous
+                    , requestNews <|
+                        encodeNewsRequest
+                            (toQueryString
+                                (page.start - (page.count * 2))
+                                page.count
+                                Nothing
+                            )
+                            token
+                    )
     in
     ( PageState
         (page.start - page.count)
         page.count
-        LoadingPage
+        Empty
         page.previous
         page.current
         page.newsStatus
         requestor
-    , requestNews <|
-        encodeNewsRequest
-            (toQueryString
-                (page.start - decrement)
-                page.count
-                Nothing
-            )
-            token
+    , cmd
     )
 
 
 toNextPage : PageState -> String -> ( PageState, Cmd Msg )
 toNextPage page token =
     let
-        ( requestor, loadablePage, cmd ) =
+        ( requestor, cmd ) =
             case page.next of
                 Empty ->
-                    ( NoOne, Empty, Cmd.none )
+                    ( NoOne, Cmd.none )
 
                 _ ->
                     ( Next
-                    , LoadingPage
                     , requestNews <|
                         encodeNewsRequest
                             (toQueryString
@@ -1057,7 +1042,7 @@ toNextPage page token =
         page.count
         page.current
         page.next
-        loadablePage
+        Empty
         page.newsStatus
         Next
     , cmd
@@ -1172,24 +1157,23 @@ viewAdmin : Model -> Html Msg
 viewAdmin model =
     Grid.container []
         [ Grid.row []
-            [ Grid.col [] [ viewDashboard model ]
+            [ Grid.col []
+                [ viewDashboard
+                    model.newsPage
+                    model.selectedNews
+                ]
             , Grid.col [] [ viewEditor model ]
             ]
         ]
 
 
-viewDashboard : Model -> Html Msg
-viewDashboard model =
-    let
-        viewNews : News -> ListGroup.CustomItem Msg
-        viewNews news =
-            viewNewsInteractive news model.selectedNews
-    in
+viewDashboard : PageState -> Maybe News -> Html Msg
+viewDashboard page selectedNews =
     Card.config
         [ Card.align Text.alignXsCenter ]
         |> Card.header []
             [ div []
-                [ viewRefreshButton model.loadNewsStatus
+                [ viewRefreshButton page.requestor
                 , Button.button
                     [ Button.primary
                     , Button.attrs [ Spacing.ml3 ]
@@ -1200,11 +1184,8 @@ viewDashboard model =
             ]
         |> Card.block []
             [ Block.text []
-                [ case model.loadNewsStatus of
-                    LoadedNews ->
-                        viewNewsList model.newsPage viewNews
-
-                    LoadingNews ->
+                [ case page.requestor of
+                    Current ->
                         Spinner.spinner
                             [ Spinner.color Text.dark
                             , Spinner.attrs
@@ -1213,37 +1194,30 @@ viewDashboard model =
                                 ]
                             ]
                             []
-                ]
-            ]
-        |> Card.view
 
+                    _ ->
+                        case page.current of
+                            Empty ->
+                                text ""
 
-viewNewsList : PageState -> (News -> ListGroup.CustomItem Msg) -> Html Msg
-viewNewsList state viewNews =
-    Card.config
-        [ Card.align Text.alignXsCenter ]
-        |> Card.block []
-            [ Block.text []
-                [ case state.current of
-                    Empty ->
-                        text ""
+                            Data newsList ->
+                                let
+                                    viewNews : News -> ListGroup.CustomItem Msg
+                                    viewNews news =
+                                        viewNewsInteractive news selectedNews
+                                in
+                                ListGroup.custom <|
+                                    List.map viewNews newsList
 
-                    LoadingPage ->
-                        text "Spinner..."
-
-                    Data news ->
-                        ListGroup.custom <|
-                            List.map viewNews news
-
-                    ErrorToLoad msg ->
-                        text msg
+                            ErrorToLoad msg ->
+                                text msg
                 ]
             ]
         |> Card.footer []
             [ div []
-                [ viewStart state
-                , viewPrevious state
-                , viewNext state
+                [ viewStart page
+                , viewPrevious page
+                , viewNext page
                 ]
             ]
         |> Card.view
@@ -1251,7 +1225,10 @@ viewNewsList state viewNews =
 
 viewStart : PageState -> Html Msg
 viewStart state =
-    if not <| state.start == 0 then
+    if state.start == 0 then
+        text ""
+
+    else
         case state.requestor of
             NoOne ->
                 Button.button
@@ -1265,7 +1242,14 @@ viewStart state =
                     [ Button.roleLink
                     , Button.disabled True
                     ]
-                    [ text "Loading..." ]
+                    [ Spinner.spinner
+                        [ Spinner.small
+                        , Spinner.color Text.warning
+                        , Spinner.attrs [ Spacing.mr1 ]
+                        ]
+                        []
+                    , text "Loading..."
+                    ]
 
             _ ->
                 Button.button
@@ -1274,13 +1258,13 @@ viewStart state =
                     ]
                     [ text "Start" ]
 
-    else
-        text ""
-
 
 viewPrevious : PageState -> Html Msg
 viewPrevious state =
-    if not <| state.start == 0 then
+    if state.start == 0 then
+        text ""
+
+    else
         case state.requestor of
             NoOne ->
                 Button.button
@@ -1294,7 +1278,14 @@ viewPrevious state =
                     [ Button.roleLink
                     , Button.disabled True
                     ]
-                    [ text "Loading..." ]
+                    [ Spinner.spinner
+                        [ Spinner.small
+                        , Spinner.color Text.warning
+                        , Spinner.attrs [ Spacing.mr1 ]
+                        ]
+                        []
+                    , text "Loading..."
+                    ]
 
             _ ->
                 Button.button
@@ -1303,51 +1294,52 @@ viewPrevious state =
                     ]
                     [ text "Previous" ]
 
-    else
-        text ""
-
 
 viewNext : PageState -> Html Msg
 viewNext state =
-    case state.next of
-        Data news ->
-            case state.requestor of
-                NoOne ->
-                    Button.button
-                        [ Button.roleLink
-                        , Button.onClick ToNextPage
-                        ]
-                        [ text "Next" ]
+    case state.requestor of
+        NoOne ->
+            case state.next of
+                Data news ->
+                    if List.isEmpty news then
+                        text ""
 
-                Next ->
-                    Button.button
-                        [ Button.roleLink
-                        , Button.disabled True
-                        ]
-                        [ text "Loading.." ]
+                    else
+                        Button.button
+                            [ Button.roleLink
+                            , Button.onClick ToNextPage
+                            ]
+                            [ text "Next" ]
 
                 _ ->
-                    Button.button
-                        [ Button.roleLink
-                        , Button.disabled True
-                        ]
-                        [ text "Next" ]
+                    text ""
 
-        LoadingPage ->
+        Next ->
             Button.button
                 [ Button.roleLink
                 , Button.disabled True
                 ]
-                [ text "Loading.." ]
+                [ Spinner.spinner
+                    [ Spinner.small
+                    , Spinner.color Text.warning
+                    , Spinner.attrs [ Spacing.mr1 ]
+                    ]
+                    []
+                , text "Loading.."
+                ]
 
         _ ->
-            text ""
+            Button.button
+                [ Button.roleLink
+                , Button.disabled True
+                ]
+                [ text "Next" ]
 
 
-viewRefreshButton : LoadNewsStatus -> Html Msg
-viewRefreshButton status =
-    case status of
-        LoadedNews ->
+viewRefreshButton : NewsRequestor -> Html Msg
+viewRefreshButton requestor =
+    case requestor of
+        NoOne ->
             Button.button
                 [ Button.primary
                 , Button.attrs [ Spacing.mr3 ]
@@ -1355,7 +1347,7 @@ viewRefreshButton status =
                 ]
                 [ text "Refresh" ]
 
-        LoadingNews ->
+        Current ->
             Button.button
                 [ Button.primary
                 , Button.disabled True
@@ -1369,6 +1361,14 @@ viewRefreshButton status =
                     []
                 , text "Loading..."
                 ]
+
+        _ ->
+            Button.button
+                [ Button.primary
+                , Button.attrs [ Spacing.mr3 ]
+                , Button.disabled True
+                ]
+                [ text "Refresh" ]
 
 
 viewEditor : Model -> Html Msg
