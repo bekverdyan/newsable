@@ -230,7 +230,7 @@ init _ =
         LoadingNews
         Nothing
         { start = 0
-        , count = 10
+        , count = 15
         , previous = Empty
         , current = Empty
         , next = Empty
@@ -986,32 +986,29 @@ toStartPage page token =
 toPreviousPage : PageState -> String -> ( PageState, Cmd Msg )
 toPreviousPage page token =
     let
-        ( requestor, loadablePage, cmd ) =
+        ( requestor, decrement ) =
             if page.start - (page.count * 2) <= 0 then
-                ( NoOne, Empty, Cmd.none )
+                ( Current, page.count )
 
             else
-                ( Previous
-                , LoadingPage
-                , requestNews <|
-                    encodeNewsRequest
-                        (toQueryString
-                            (page.start - (page.count * 2))
-                            page.count
-                            Nothing
-                        )
-                        token
-                )
+                ( Previous, page.count * 2 )
     in
     ( PageState
         (page.start - page.count)
         page.count
-        loadablePage
+        LoadingPage
         page.previous
         page.current
         page.newsStatus
         requestor
-    , cmd
+    , requestNews <|
+        encodeNewsRequest
+            (toQueryString
+                (page.start - decrement)
+                page.count
+                Nothing
+            )
+            token
     )
 
 
