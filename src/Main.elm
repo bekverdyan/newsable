@@ -124,7 +124,7 @@ type alias Model =
     , createNewsStatus : CreateNews
     , loadNewsStatus : LoadNewsStatus
     , selectedNews : Maybe News
-    , pageState : PageState
+    , newsPage : PageState
     }
 
 
@@ -230,7 +230,7 @@ init _ =
         LoadingNews
         Nothing
         { start = 0
-        , count = 15
+        , count = 10
         , previous = Empty
         , current = Empty
         , next = Empty
@@ -277,7 +277,7 @@ handleAuthResponse response model =
                     encodeNewsRequest
                         (toQueryString
                             0
-                            15
+                            model.newsPage.count
                             Nothing
                         )
                         token
@@ -600,7 +600,7 @@ update msg model =
                         encodeNewsRequest
                             (toQueryString
                                 0
-                                15
+                                model.newsPage.count
                                 Nothing
                             )
                             value
@@ -653,20 +653,20 @@ update msg model =
         GotNews encoded ->
             let
                 page =
-                    handleIncomingNews encoded model.pageState
+                    handleIncomingNews encoded model.newsPage
 
                 ( requestor, loaderState, cmd ) =
                     case model.credentials.token of
                         Just token ->
-                            case model.pageState.requestor of
+                            case model.newsPage.requestor of
                                 Current ->
                                     ( Next
                                     , LoadingPage
                                     , requestNews <|
                                         encodeNewsRequest
                                             (toQueryString
-                                                (page.start + 15)
-                                                15
+                                                (page.start + model.newsPage.count)
+                                                model.newsPage.count
                                                 Nothing
                                             )
                                             token
@@ -679,7 +679,7 @@ update msg model =
                             ( NoOne, page.next, Cmd.none )
             in
             ( { model
-                | pageState =
+                | newsPage =
                     { page
                         | requestor = requestor
                         , next = loaderState
@@ -736,7 +736,7 @@ update msg model =
                             encodeNewsRequest
                                 (toQueryString
                                     0
-                                    15
+                                    model.newsPage.count
                                     Nothing
                                 )
                                 token
@@ -926,9 +926,9 @@ update msg model =
                 Just token ->
                     let
                         ( page, cmd ) =
-                            toStartPage model.pageState token
+                            toStartPage model.newsPage token
                     in
-                    ( { model | pageState = page }, cmd )
+                    ( { model | newsPage = page }, cmd )
 
                 Nothing ->
                     ( model, Cmd.none )
@@ -938,9 +938,9 @@ update msg model =
                 Just token ->
                     let
                         ( page, cmd ) =
-                            toPreviousPage model.pageState token
+                            toPreviousPage model.newsPage token
                     in
-                    ( { model | pageState = page }, cmd )
+                    ( { model | newsPage = page }, cmd )
 
                 Nothing ->
                     ( model, Cmd.none )
@@ -950,9 +950,9 @@ update msg model =
                 Just token ->
                     let
                         ( page, cmd ) =
-                            toNextPage model.pageState token
+                            toNextPage model.newsPage token
                     in
-                    ( { model | pageState = page }, cmd )
+                    ( { model | newsPage = page }, cmd )
 
                 Nothing ->
                     ( model, Cmd.none )
@@ -976,7 +976,7 @@ toStartPage page token =
         encodeNewsRequest
             (toQueryString
                 0
-                15
+                page.count
                 Nothing
             )
             token
@@ -987,7 +987,7 @@ toPreviousPage : PageState -> String -> ( PageState, Cmd Msg )
 toPreviousPage page token =
     let
         ( requestor, loadablePage, cmd ) =
-            if page.start - 30 <= 0 then
+            if page.start - (page.count * 2) <= 0 then
                 ( NoOne, Empty, Cmd.none )
 
             else
@@ -996,7 +996,7 @@ toPreviousPage page token =
                 , requestNews <|
                     encodeNewsRequest
                         (toQueryString
-                            (page.start - 30)
+                            (page.start - (page.count * 2))
                             page.count
                             Nothing
                         )
@@ -1004,7 +1004,7 @@ toPreviousPage page token =
                 )
     in
     ( PageState
-        (page.start - 15)
+        (page.start - page.count)
         page.count
         loadablePage
         page.previous
@@ -1029,7 +1029,7 @@ toNextPage page token =
                     , requestNews <|
                         encodeNewsRequest
                             (toQueryString
-                                (page.start + 30)
+                                (page.start + (page.count * 2))
                                 page.count
                                 Nothing
                             )
@@ -1037,7 +1037,7 @@ toNextPage page token =
                     )
     in
     ( PageState
-        (page.start + 15)
+        (page.start + page.count)
         page.count
         page.current
         page.next
@@ -1186,7 +1186,7 @@ viewDashboard model =
             [ Block.text []
                 [ case model.loadNewsStatus of
                     LoadedNews ->
-                        viewNewsList model.pageState viewNews
+                        viewNewsList model.newsPage viewNews
 
                     LoadingNews ->
                         Spinner.spinner
