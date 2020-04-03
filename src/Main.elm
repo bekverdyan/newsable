@@ -394,7 +394,12 @@ handleIncomingNews encoded page =
             case decoded of
                 Ok news ->
                     { page
-                        | next = Data news
+                        | next =
+                            if List.isEmpty news then
+                                Empty
+
+                            else
+                                Data news
                         , requestor = NoOne
                     }
 
