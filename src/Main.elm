@@ -663,8 +663,8 @@ update msg model =
                 ( requestor, loaderState, cmd ) =
                     case model.credentials.token of
                         Just token ->
-                            case model.newsPage.requestor of
-                                Current ->
+                            let
+                                process =
                                     ( Next
                                     , LoadingPage
                                     , requestNews <|
@@ -676,6 +676,13 @@ update msg model =
                                             )
                                             token
                                     )
+                            in
+                            case model.newsPage.requestor of
+                                Current ->
+                                    process
+
+                                Start ->
+                                    process
 
                                 _ ->
                                     ( NoOne, page.next, Cmd.none )
