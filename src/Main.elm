@@ -740,15 +740,22 @@ update msg model =
             )
 
         RefreshPlaylist ->
-            ( { model | loadNewsStatus = LoadingNews }
+            let
+                page =
+                    model.newsPage
+            in
+            ( { model
+                | loadNewsStatus = LoadingNews
+                , newsPage = { page | requestor = Current }
+              }
             , Cmd.batch
                 [ case model.credentials.token of
                     Just token ->
                         requestNews <|
                             encodeNewsRequest
                                 (toQueryString
-                                    0
-                                    model.newsPage.count
+                                    page.start
+                                    page.count
                                     Nothing
                                 )
                                 token
