@@ -223,7 +223,7 @@ init _ =
         Ready
         Nothing
         { start = 0
-        , count = 5
+        , count = 15
         , previous = Empty
         , current = Empty
         , next = Empty
