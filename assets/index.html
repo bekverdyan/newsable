@@ -32,14 +32,14 @@
 
     const serverAddress = 'http://3.120.74.192:9090/rest';
 
-    app.ports.requestNews.subscribe(function (token) {
+    app.ports.requestNews.subscribe(function (data) {
 
       const Http = new XMLHttpRequest();
 
-      Http.open("GET", serverAddress + "/news");
+      Http.open("GET", serverAddress + "/news" + data.query);
 
       Http.setRequestHeader('Content-Type', 'application/json');
-      Http.setRequestHeader('Authorization', token);
+      Http.setRequestHeader('Authorization', data.token);
 
       Http.send();
 
