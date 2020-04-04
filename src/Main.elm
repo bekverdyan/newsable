@@ -15,6 +15,7 @@ import Bootstrap.Grid.Row as Row
 import Bootstrap.ListGroup as ListGroup
 import Bootstrap.Navbar as Navbar
 import Bootstrap.Spinner as Spinner
+import Bootstrap.Tab as Tab
 import Bootstrap.Text as Text
 import Bootstrap.Utilities.Spacing as Spacing
 import Browser
@@ -92,6 +93,7 @@ subscriptions model =
         , createNewsResponse NewsCreationResponse
         , acceptNewsResponse GotAcceptedNews
         , rejectNewsResponse GotRejectedNews
+        , Tab.subscriptions model.tabState TabMsg
         ]
 
 
@@ -123,6 +125,7 @@ type alias Model =
     , createNewsStatus : CreateNews
     , selectedNews : Maybe News
     , newsPage : PageState
+    , tabState : Tab.State
     }
 
 
@@ -132,7 +135,7 @@ type alias PageState =
     , previous : Page
     , current : Page
     , next : Page
-    , newsStatus : NewsStatus
+    , type_ : NewsType
     , requestor : NewsRequestor
     }
 
@@ -151,8 +154,8 @@ type Page
     | Data (List News)
 
 
-type NewsStatus
-    = Undefined
+type NewsType
+    = All
     | Accepted
     | Rejected
 
@@ -224,9 +227,10 @@ init _ =
         , previous = Empty
         , current = Empty
         , next = Empty
-        , newsStatus = Undefined
+        , type_ = All
         , requestor = Current
         }
+        Tab.initialState
     , navbarCmd
     )
 
@@ -267,7 +271,7 @@ handleAuthResponse response model =
                         (toQueryString
                             0
                             model.newsPage.count
-                            Nothing
+                            model.newsPage.type_
                         )
                         token
                 ]
@@ -519,6 +523,10 @@ type Msg
     | ToStartPage
     | ToPreviousPage
     | ToNextPage
+    | TabMsg Tab.State
+    | ToAllNewsTab
+    | ToAcceptedNewsTab
+    | ToRejectedNewsTab
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -595,7 +603,7 @@ update msg model =
                             (toQueryString
                                 0
                                 model.newsPage.count
-                                Nothing
+                                model.newsPage.type_
                             )
                             value
 
@@ -660,7 +668,7 @@ update msg model =
                                             (toQueryString
                                                 (page.start + model.newsPage.count)
                                                 model.newsPage.count
-                                                Nothing
+                                                model.newsPage.type_
                                             )
                                             token
                                     )
@@ -739,7 +747,7 @@ update msg model =
                                 (toQueryString
                                     page.start
                                     page.count
-                                    Nothing
+                                    page.type_
                                 )
                                 token
 
@@ -959,6 +967,69 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
+        TabMsg state ->
+            ( { model | tabState = state }, Cmd.none )
+
+        ToAllNewsTab ->
+            let
+                pageOrig =
+                    model.newsPage
+
+                page =
+                    { pageOrig | type_ = All }
+
+                ( pageNew, cmd ) =
+                    case model.credentials.token of
+                        Just token ->
+                            toStartPage page token
+
+                        Nothing ->
+                            ( page, Cmd.none )
+            in
+            ( { model | newsPage = pageNew }
+            , cmd
+            )
+
+        ToAcceptedNewsTab ->
+            let
+                pageOrig =
+                    model.newsPage
+
+                page =
+                    { pageOrig | type_ = Accepted }
+
+                ( pageNew, cmd ) =
+                    case model.credentials.token of
+                        Just token ->
+                            toStartPage page token
+
+                        Nothing ->
+                            ( page, Cmd.none )
+            in
+            ( { model | newsPage = pageNew }
+            , cmd
+            )
+
+        ToRejectedNewsTab ->
+            let
+                pageOrig =
+                    model.newsPage
+
+                page =
+                    { pageOrig | type_ = Rejected }
+
+                ( pageNew, cmd ) =
+                    case model.credentials.token of
+                        Just token ->
+                            toStartPage page token
+
+                        Nothing ->
+                            ( page, Cmd.none )
+            in
+            ( { model | newsPage = pageNew }
+            , cmd
+            )
+
 
 
 -- HELPER
@@ -972,14 +1043,14 @@ toStartPage page token =
         Empty
         Empty
         Empty
-        page.newsStatus
+        page.type_
         Start
     , requestNews <|
         encodeNewsRequest
             (toQueryString
                 0
                 page.count
-                Nothing
+                page.type_
             )
             token
     )
@@ -1000,7 +1071,7 @@ toPreviousPage page token =
                             (toQueryString
                                 (page.start - (page.count * 2))
                                 page.count
-                                Nothing
+                                page.type_
                             )
                             token
                     )
@@ -1011,7 +1082,7 @@ toPreviousPage page token =
         Empty
         page.previous
         page.current
-        page.newsStatus
+        page.type_
         requestor
     , cmd
     )
@@ -1032,7 +1103,7 @@ toNextPage page token =
                             (toQueryString
                                 (page.start + (page.count * 2))
                                 page.count
-                                Nothing
+                                page.type_
                             )
                             token
                     )
@@ -1043,30 +1114,29 @@ toNextPage page token =
         page.current
         page.next
         Empty
-        page.newsStatus
+        page.type_
         Next
     , cmd
     )
 
 
-toQueryString : Int -> Int -> Maybe Bool -> String
-toQueryString start count accepted =
+toQueryString : Int -> Int -> NewsType -> String
+toQueryString start count type_ =
     "?start="
         ++ String.fromInt start
         ++ "&count="
         ++ String.fromInt count
-        ++ (case accepted of
-                Just value ->
-                    "&accepted="
-                        ++ (if value then
-                                "true"
+        ++ ("&accepted="
+                ++ (case type_ of
+                        Accepted ->
+                            "true"
 
-                            else
-                                "false"
-                           )
+                        Rejected ->
+                            "false"
 
-                Nothing ->
-                    ""
+                        All ->
+                            "all"
+                   )
            )
 
 
@@ -1158,22 +1228,19 @@ viewAdmin model =
     Grid.container []
         [ Grid.row []
             [ Grid.col []
-                [ viewDashboard
-                    model.newsPage
-                    model.selectedNews
-                ]
+                [ viewDashboard model ]
             , Grid.col [] [ viewEditor model ]
             ]
         ]
 
 
-viewDashboard : PageState -> Maybe News -> Html Msg
-viewDashboard page selectedNews =
+viewDashboard : Model -> Html Msg
+viewDashboard model =
     Card.config
         [ Card.align Text.alignXsCenter ]
         |> Card.header []
             [ div []
-                [ viewRefreshButton page.requestor
+                [ viewRefreshButton model.newsPage.requestor
                 , Button.button
                     [ Button.primary
                     , Button.attrs [ Spacing.ml3 ]
@@ -1184,53 +1251,116 @@ viewDashboard page selectedNews =
             ]
         |> Card.block []
             [ Block.text []
-                [ case page.requestor of
-                    Current ->
-                        Spinner.spinner
-                            [ Spinner.color Text.dark
-                            , Spinner.attrs
-                                [ style "width" "5rem"
-                                , style "height" "5rem"
-                                ]
-                            ]
-                            []
-
-                    Start ->
-                        Spinner.spinner
-                            [ Spinner.color Text.dark
-                            , Spinner.attrs
-                                [ style "width" "5rem"
-                                , style "height" "5rem"
-                                ]
-                            ]
-                            []
-
-                    _ ->
-                        case page.current of
-                            Empty ->
-                                text ""
-
-                            Data newsList ->
-                                let
-                                    viewNews : News -> ListGroup.CustomItem Msg
-                                    viewNews news =
-                                        viewNewsInteractive news selectedNews
-                                in
-                                ListGroup.custom <|
-                                    List.map viewNews newsList
-
-                            ErrorToLoad msg ->
-                                text msg
+                [ Tab.config TabMsg
+                    |> Tab.withAnimation
+                    |> Tab.center
+                    |> Tab.items
+                        [ Tab.item
+                            { id = "allTab"
+                            , link =
+                                Tab.link []
+                                    [ Button.button
+                                        [ Button.roleLink
+                                        , Button.onClick ToAllNewsTab
+                                        ]
+                                        [ text "All" ]
+                                    ]
+                            , pane =
+                                Tab.pane []
+                                    [ viewTabContent
+                                        model.newsPage
+                                        model.selectedNews
+                                    ]
+                            }
+                        , Tab.item
+                            { id = "acceptedTab"
+                            , link =
+                                Tab.link
+                                    []
+                                    [ Button.button
+                                        [ Button.roleLink
+                                        , Button.onClick ToAcceptedNewsTab
+                                        ]
+                                        [ text "Accepted" ]
+                                    ]
+                            , pane =
+                                Tab.pane []
+                                    [ viewTabContent
+                                        model.newsPage
+                                        model.selectedNews
+                                    ]
+                            }
+                        , Tab.item
+                            { id = "rejectedTab"
+                            , link =
+                                Tab.link
+                                    []
+                                    [ Button.button
+                                        [ Button.roleLink
+                                        , Button.onClick ToRejectedNewsTab
+                                        ]
+                                        [ text "Rejected" ]
+                                    ]
+                            , pane =
+                                Tab.pane []
+                                    [ viewTabContent
+                                        model.newsPage
+                                        model.selectedNews
+                                    ]
+                            }
+                        ]
+                    |> Tab.view model.tabState
                 ]
             ]
         |> Card.footer []
             [ div []
-                [ viewStart page
-                , viewPrevious page
-                , viewNext page
+                [ viewStart model.newsPage
+                , viewPrevious model.newsPage
+                , viewNext model.newsPage
                 ]
             ]
         |> Card.view
+
+
+viewTabContent : PageState -> Maybe News -> Html Msg
+viewTabContent page selectedNews =
+    case page.requestor of
+        Current ->
+            Spinner.spinner
+                [ Spinner.color Text.dark
+                , Spinner.attrs
+                    [ style "width" "5rem"
+                    , style "height" "5rem"
+                    ]
+                ]
+                []
+
+        Start ->
+            Spinner.spinner
+                [ Spinner.color Text.dark
+                , Spinner.attrs
+                    [ style "width" "5rem"
+                    , style "height" "5rem"
+                    ]
+                ]
+                []
+
+        _ ->
+            case page.current of
+                Empty ->
+                    text ""
+
+                Data newsList ->
+                    let
+                        viewNews : News -> ListGroup.CustomItem Msg
+                        viewNews news =
+                            viewNewsInteractive news selectedNews
+                    in
+                    ListGroup.custom <|
+                        List.map viewNews newsList
+
+                ErrorToLoad msg ->
+                    text msg
 
 
 viewStart : PageState -> Html Msg
