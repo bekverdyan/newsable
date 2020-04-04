@@ -1195,6 +1195,16 @@ viewDashboard page selectedNews =
                             ]
                             []
 
+                    Start ->
+                        Spinner.spinner
+                            [ Spinner.color Text.dark
+                            , Spinner.attrs
+                                [ style "width" "5rem"
+                                , style "height" "5rem"
+                                ]
+                            ]
+                            []
+
                     _ ->
                         case page.current of
                             Empty ->
@@ -1315,6 +1325,20 @@ viewNext state =
                     text ""
 
         Next ->
+            Button.button
+                [ Button.roleLink
+                , Button.disabled True
+                ]
+                [ Spinner.spinner
+                    [ Spinner.small
+                    , Spinner.color Text.warning
+                    , Spinner.attrs [ Spacing.mr1 ]
+                    ]
+                    []
+                , text "Loading.."
+                ]
+
+        Start ->
             Button.button
                 [ Button.roleLink
                 , Button.disabled True
