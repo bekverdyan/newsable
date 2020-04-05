@@ -1228,6 +1228,8 @@ viewDashboard model =
                     |> Tab.useHash True
                     |> Tab.withAnimation
                     |> Tab.center
+                    |> Tab.pills
+                    |> Tab.fill
                     |> Tab.items
                         [ Tab.item
                             { id = "allTab"
