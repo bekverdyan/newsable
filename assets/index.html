@@ -144,6 +144,13 @@
         }
       };
     });
+
+    function hashChange() {
+      const hash = { "hash": location.hash };
+      app.ports.urlHashChanged.send(hash);
+    };
+
+    window.addEventListener("hashchange", hashChange, false);
   </script>
 </body>
 

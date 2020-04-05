@@ -83,6 +83,9 @@ port rejectNewsRequest : E.Value -> Cmd msg
 port rejectNewsResponse : (E.Value -> msg) -> Sub msg
 
 
+port urlHashChanged : (E.Value -> msg) -> Sub msg
+
+
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
@@ -94,6 +97,7 @@ subscriptions model =
         , acceptNewsResponse GotAcceptedNews
         , rejectNewsResponse GotRejectedNews
         , Tab.subscriptions model.tabState TabMsg
+        , urlHashChanged HashChanged
         ]
 
 
@@ -524,9 +528,7 @@ type Msg
     | ToPreviousPage
     | ToNextPage
     | TabMsg Tab.State
-    | ToAllNewsTab
-    | ToAcceptedNewsTab
-    | ToRejectedNewsTab
+    | HashChanged E.Value
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -715,18 +717,10 @@ update msg model =
                                     Cmd.none
 
                         Nothing ->
-                            -- let
-                            --     log =
-                            --         Debug.log "No Films found" ""
-                            -- in
                             -- -- TODO Alert about empty data
                             Cmd.none
 
                 Err message ->
-                    -- let
-                    --     log =
-                    --         Debug.log "Film decode error" message
-                    -- in
                     -- TODO Alert about decoder failure
                     Cmd.none
             )
@@ -970,63 +964,42 @@ update msg model =
         TabMsg state ->
             ( { model | tabState = state }, Cmd.none )
 
-        ToAllNewsTab ->
+        HashChanged encoded ->
             let
                 pageOrig =
                     model.newsPage
 
-                page =
-                    { pageOrig | type_ = All }
+                type_ =
+                    case
+                        D.decodeValue
+                            (D.field "hash" D.string)
+                            encoded
+                    of
+                        Ok hash ->
+                            if hash == "#acceptedTab" then
+                                Accepted
+
+                            else if hash == "#rejectedTab" then
+                                Rejected
+
+                            else
+                                All
+
+                        Err message ->
+                            -- TODO Inform somehow about this error case
+                            All
 
                 ( pageNew, cmd ) =
                     case model.credentials.token of
                         Just token ->
-                            toStartPage page token
+                            toStartPage { pageOrig | type_ = type_ } token
 
                         Nothing ->
-                            ( page, Cmd.none )
+                            ( pageOrig, Cmd.none )
             in
-            ( { model | newsPage = pageNew }
-            , cmd
-            )
-
-        ToAcceptedNewsTab ->
-            let
-                pageOrig =
-                    model.newsPage
-
-                page =
-                    { pageOrig | type_ = Accepted }
-
-                ( pageNew, cmd ) =
-                    case model.credentials.token of
-                        Just token ->
-                            toStartPage page token
-
-                        Nothing ->
-                            ( page, Cmd.none )
-            in
-            ( { model | newsPage = pageNew }
-            , cmd
-            )
-
-        ToRejectedNewsTab ->
-            let
-                pageOrig =
-                    model.newsPage
-
-                page =
-                    { pageOrig | type_ = Rejected }
-
-                ( pageNew, cmd ) =
-                    case model.credentials.token of
-                        Just token ->
-                            toStartPage page token
-
-                        Nothing ->
-                            ( page, Cmd.none )
-            in
-            ( { model | newsPage = pageNew }
+            ( { model
+                | newsPage = pageNew
+              }
             , cmd
             )
 
@@ -1252,6 +1225,7 @@ viewDashboard model =
         |> Card.block []
             [ Block.text []
                 [ Tab.config TabMsg
+                    |> Tab.useHash True
                     |> Tab.withAnimation
                     |> Tab.center
                     |> Tab.items
@@ -1259,11 +1233,7 @@ viewDashboard model =
                             { id = "allTab"
                             , link =
                                 Tab.link []
-                                    [ Button.button
-                                        [ Button.roleLink
-                                        , Button.onClick ToAllNewsTab
-                                        ]
-                                        [ text "All" ]
+                                    [ text "All"
                                     ]
                             , pane =
                                 Tab.pane []
@@ -1277,12 +1247,7 @@ viewDashboard model =
                             , link =
                                 Tab.link
                                     []
-                                    [ Button.button
-                                        [ Button.roleLink
-                                        , Button.onClick ToAcceptedNewsTab
-                                        ]
-                                        [ text "Accepted" ]
-                                    ]
+                                    [ text "Accepted" ]
                             , pane =
                                 Tab.pane []
                                     [ viewTabContent
@@ -1295,12 +1260,7 @@ viewDashboard model =
                             , link =
                                 Tab.link
                                     []
-                                    [ Button.button
-                                        [ Button.roleLink
-                                        , Button.onClick ToRejectedNewsTab
-                                        ]
-                                        [ text "Rejected" ]
-                                    ]
+                                    [ text "Rejected" ]
                             , pane =
                                 Tab.pane []
                                     [ viewTabContent
