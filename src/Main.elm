@@ -1,6 +1,7 @@
 port module Main exposing (Model, init, main)
 
 import Bootstrap.Alert as Alert
+import Bootstrap.Badge as Badge
 import Bootstrap.Button as Button
 import Bootstrap.Card as Card
 import Bootstrap.Card.Block as Block
@@ -17,6 +18,7 @@ import Bootstrap.Navbar as Navbar
 import Bootstrap.Spinner as Spinner
 import Bootstrap.Tab as Tab
 import Bootstrap.Text as Text
+import Bootstrap.Utilities.Flex as Flex
 import Bootstrap.Utilities.Spacing as Spacing
 import Browser
 import Html exposing (..)
@@ -83,9 +85,6 @@ port rejectNewsRequest : E.Value -> Cmd msg
 port rejectNewsResponse : (E.Value -> msg) -> Sub msg
 
 
-port urlHashChanged : (E.Value -> msg) -> Sub msg
-
-
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
@@ -97,7 +96,6 @@ subscriptions model =
         , acceptNewsResponse GotAcceptedNews
         , rejectNewsResponse GotRejectedNews
         , Tab.subscriptions model.tabState TabMsg
-        , urlHashChanged HashChanged
         ]
 
 
@@ -196,6 +194,7 @@ type alias News =
     { id : Int
     , title : String
     , fileId : Int
+    , accepted : Bool
     }
 
 
@@ -234,7 +233,7 @@ init _ =
         , type_ = All
         , requestor = Current
         }
-        Tab.initialState
+        (Tab.customInitialState "allTab")
     , navbarCmd
     )
 
@@ -449,10 +448,11 @@ decodeNewsList =
 
 decodeNews : D.Decoder News
 decodeNews =
-    D.map3 News
+    D.map4 News
         (D.field "id" D.int)
         (D.field "title" D.string)
         (D.field "fileId" D.int)
+        (D.field "accepted" D.bool)
 
 
 encodeNewsList : List News -> E.Value
@@ -528,7 +528,9 @@ type Msg
     | ToPreviousPage
     | ToNextPage
     | TabMsg Tab.State
-    | HashChanged E.Value
+    | ToAllNewsTab
+    | ToAcceptedNewsTab
+    | ToRejectedNewsTab
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -964,41 +966,62 @@ update msg model =
         TabMsg state ->
             ( { model | tabState = state }, Cmd.none )
 
-        HashChanged encoded ->
+        ToAllNewsTab ->
             let
                 pageOrig =
                     model.newsPage
 
-                type_ =
-                    case
-                        D.decodeValue
-                            (D.field "hash" D.string)
-                            encoded
-                    of
-                        Ok hash ->
-                            if hash == "#acceptedTab" then
-                                Accepted
-
-                            else if hash == "#rejectedTab" then
-                                Rejected
-
-                            else
-                                All
-
-                        Err message ->
-                            -- TODO Inform somehow about this error case
-                            All
-
-                ( pageNew, cmd ) =
+                ( page, cmd ) =
                     case model.credentials.token of
                         Just token ->
-                            toStartPage { pageOrig | type_ = type_ } token
+                            toStartPage { pageOrig | type_ = All } token
 
                         Nothing ->
                             ( pageOrig, Cmd.none )
             in
             ( { model
-                | newsPage = pageNew
+                | newsPage = page
+                , tabState = Tab.customInitialState "allTab"
+              }
+            , cmd
+            )
+
+        ToAcceptedNewsTab ->
+            let
+                pageOrig =
+                    model.newsPage
+
+                ( page, cmd ) =
+                    case model.credentials.token of
+                        Just token ->
+                            toStartPage { pageOrig | type_ = Accepted } token
+
+                        Nothing ->
+                            ( pageOrig, Cmd.none )
+            in
+            ( { model
+                | newsPage = page
+                , tabState = Tab.customInitialState "acceptedTab"
+              }
+            , cmd
+            )
+
+        ToRejectedNewsTab ->
+            let
+                pageOrig =
+                    model.newsPage
+
+                ( page, cmd ) =
+                    case model.credentials.token of
+                        Just token ->
+                            toStartPage { pageOrig | type_ = Rejected } token
+
+                        Nothing ->
+                            ( pageOrig, Cmd.none )
+            in
+            ( { model
+                | newsPage = page
+                , tabState = Tab.customInitialState "rejectedTab"
               }
             , cmd
             )
@@ -1225,14 +1248,20 @@ viewDashboard model =
         |> Card.block []
             [ Block.text []
                 [ Tab.config TabMsg
-                    |> Tab.useHash True
                     |> Tab.withAnimation
                     |> Tab.center
                     |> Tab.items
                         [ Tab.item
                             { id = "allTab"
                             , link =
-                                Tab.link []
+                                Tab.link
+                                    [ case model.newsPage.requestor of
+                                        NoOne ->
+                                            onClick ToAllNewsTab
+
+                                        _ ->
+                                            disabled True
+                                    ]
                                     [ text "All"
                                     ]
                             , pane =
@@ -1246,7 +1275,13 @@ viewDashboard model =
                             { id = "acceptedTab"
                             , link =
                                 Tab.link
-                                    []
+                                    [ case model.newsPage.requestor of
+                                        NoOne ->
+                                            onClick ToAcceptedNewsTab
+
+                                        _ ->
+                                            disabled True
+                                    ]
                                     [ text "Accepted" ]
                             , pane =
                                 Tab.pane []
@@ -1259,7 +1294,13 @@ viewDashboard model =
                             { id = "rejectedTab"
                             , link =
                                 Tab.link
-                                    []
+                                    [ case model.newsPage.requestor of
+                                        NoOne ->
+                                            onClick ToRejectedNewsTab
+
+                                        _ ->
+                                            disabled True
+                                    ]
                                     [ text "Rejected" ]
                             , pane =
                                 Tab.pane []
@@ -1622,16 +1663,28 @@ viewNewsInteractive news selectedNews =
                         ListGroup.warning
 
                     else
-                        ListGroup.primary
+                        ListGroup.secondary
 
                 Nothing ->
-                    ListGroup.primary
+                    ListGroup.secondary
+
+        badge =
+            if news.accepted then
+                Badge.badgeSuccess [] [ text "Accepted" ]
+
+            else
+                Badge.badgeDanger [] [ text "Rejected" ]
     in
     ListGroup.button
         [ itemStyle
-        , ListGroup.attrs [ onClick (Play news) ]
+        , ListGroup.attrs
+            [ onClick (Play news)
+            , Flex.block
+            , Flex.justifyBetween
+            , Flex.alignItemsCenter
+            ]
         ]
-        [ text news.title ]
+        [ text news.title, badge ]
 
 
 viewSignIn : Model -> Html Msg
