@@ -11,7 +11,14 @@ Content-Type: application/json
 }​​
 
 ###
-GET {{host}}/news?start=0&count=15&accepted=false
+GET {{host}}/news?start=0&count=15&accepted=all
+Content-Type: application/json
+Authorization: {{token}}
+
+{}
+
+###
+GET {{host}}/films/326
 Content-Type: application/json
 Authorization: {{token}}
 
