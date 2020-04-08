@@ -93,6 +93,113 @@ init =
     }
 
 
+
+-- SUBSCRIPTIONS
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.batch [ Tab.subscriptions model.tabState TabMsg ]
+
+
+
+-- UPDATE
+
+
+type Msg
+    = OpenNewsCreator
+    | RefreshPlaylist
+    | TabMsg Tab.State
+    | ToAllNewsTab
+    | Play News
+    | ToAcceptedNewsTab
+    | ToRejectedNewsTab
+    | ToStartPage
+    | ToPreviousPage
+    | ToNextPage
+
+
+update :
+    Msg
+    -> Model
+    -> (E.Value -> Cmd msg)
+    -> Maybe String
+    -> ( Model, Cmd msg )
+update message model requestNews auth =
+    case message of
+        RefreshPlaylist ->
+            case auth of
+                Just token ->
+                    refreshCurrentPage
+                        model
+                        token
+                        requestNews
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ToStartPage ->
+            case auth of
+                Just token ->
+                    toStartPage model token requestNews
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ToPreviousPage ->
+            case auth of
+                Just token ->
+                    toPreviousPage model token requestNews
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ToNextPage ->
+            case auth of
+                Just token ->
+                    toNextPage model token requestNews
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        TabMsg state ->
+            ( { model | tabState = state }, Cmd.none )
+
+        ToAllNewsTab ->
+            case auth of
+                Just token ->
+                    toAllNewsTab model token requestNews
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ToAcceptedNewsTab ->
+            case auth of
+                Just token ->
+                    toAcceptedNewsTab model token requestNews
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ToRejectedNewsTab ->
+            case auth of
+                Just token ->
+                    toRejectedNewsTab model token requestNews
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        Play news ->
+            ( { model | selected = Just news }, Cmd.none )
+
+        OpenNewsCreator ->
+            ( model, Cmd.none )
+
+
+
+-- HANDLER
+
+
 handleIncomingNews : E.Value -> String -> Model -> ( Model, Maybe E.Value )
 handleIncomingNews encoded token model =
     case model.requestor of
@@ -134,6 +241,10 @@ handleIncomingNews encoded token model =
             ( applyNews encoded model, Nothing )
 
 
+
+-- HELPER
+
+
 toQueryString : Int -> Int -> Type -> String
 toQueryString start count type_ =
     "?start="
@@ -152,14 +263,6 @@ toQueryString start count type_ =
                             "all"
                    )
            )
-
-
-encodeHttpRequest : String -> String -> E.Value
-encodeHttpRequest query token =
-    E.object
-        [ ( "query", E.string query )
-        , ( "token", E.string token )
-        ]
 
 
 applyNews : E.Value -> Model -> Model
@@ -236,20 +339,6 @@ applyNews encoded model =
 
         NoOne ->
             model
-
-
-decodeNewsList : D.Decoder (List News)
-decodeNewsList =
-    D.list decodeNews
-
-
-decodeNews : D.Decoder News
-decodeNews =
-    D.map4 News
-        (D.field "id" D.int)
-        (D.field "title" D.string)
-        (D.field "fileId" D.int)
-        (D.field "accepted" D.bool)
 
 
 loadFirstPage : Model -> String -> ( Model, E.Value )
@@ -405,98 +494,30 @@ toNextPage model token requestNews =
     )
 
 
-type Msg
-    = OpenNewsCreator
-    | RefreshPlaylist
-    | TabMsg Tab.State
-    | ToAllNewsTab
-    | Play News
-    | ToAcceptedNewsTab
-    | ToRejectedNewsTab
-    | ToStartPage
-    | ToPreviousPage
-    | ToNextPage
+
+-- ENCODE DECODE
 
 
+encodeHttpRequest : String -> String -> E.Value
+encodeHttpRequest query token =
+    E.object
+        [ ( "query", E.string query )
+        , ( "token", E.string token )
+        ]
 
--- UPDATE
+
+decodeNewsList : D.Decoder (List News)
+decodeNewsList =
+    D.list decodeNews
 
 
-update :
-    Msg
-    -> Model
-    -> (E.Value -> Cmd msg)
-    -> Maybe String
-    -> ( Model, Cmd msg )
-update message model requestNews auth =
-    case message of
-        RefreshPlaylist ->
-            case auth of
-                Just token ->
-                    refreshCurrentPage
-                        model
-                        token
-                        requestNews
-
-                Nothing ->
-                    ( model, Cmd.none )
-
-        ToStartPage ->
-            case auth of
-                Just token ->
-                    toStartPage model token requestNews
-
-                Nothing ->
-                    ( model, Cmd.none )
-
-        ToPreviousPage ->
-            case auth of
-                Just token ->
-                    toPreviousPage model token requestNews
-
-                Nothing ->
-                    ( model, Cmd.none )
-
-        ToNextPage ->
-            case auth of
-                Just token ->
-                    toNextPage model token requestNews
-
-                Nothing ->
-                    ( model, Cmd.none )
-
-        TabMsg state ->
-            ( { model | tabState = state }, Cmd.none )
-
-        ToAllNewsTab ->
-            case auth of
-                Just token ->
-                    toAllNewsTab model token requestNews
-
-                Nothing ->
-                    ( model, Cmd.none )
-
-        ToAcceptedNewsTab ->
-            case auth of
-                Just token ->
-                    toAcceptedNewsTab model token requestNews
-
-                Nothing ->
-                    ( model, Cmd.none )
-
-        ToRejectedNewsTab ->
-            case auth of
-                Just token ->
-                    toRejectedNewsTab model token requestNews
-
-                Nothing ->
-                    ( model, Cmd.none )
-
-        Play news ->
-            ( { model | selected = Just news }, Cmd.none )
-
-        _ ->
-            ( model, Cmd.none )
+decodeNews : D.Decoder News
+decodeNews =
+    D.map4 News
+        (D.field "id" D.int)
+        (D.field "title" D.string)
+        (D.field "fileId" D.int)
+        (D.field "accepted" D.bool)
 
 
 
@@ -828,12 +849,3 @@ viewNext model =
                 , Button.disabled True
                 ]
                 [ text "Next" ]
-
-
-
--- SUBSCRIPTIONS
-
-
-subscriptions : Model -> Sub Msg
-subscriptions model =
-    Sub.batch [ Tab.subscriptions model.tabState TabMsg ]
