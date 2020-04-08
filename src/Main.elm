@@ -124,7 +124,6 @@ type alias Model =
     , newsTemplate : CreateNewsTemplate
     , createNewsStatus : CreateNews
     , newsPage : Page.Model
-    , tabState : Tab.State
     }
 
 
@@ -183,7 +182,6 @@ init _ =
         clearNewsFormData
         Ready
         Page.init
-        (Tab.customInitialState "allTab")
     , navbarCmd
     )
 
@@ -211,24 +209,19 @@ handleAuthResponse response model =
 
                 credentials =
                     model.credentials
+
+                ( newsPage, httpRequestor ) =
+                    Page.refreshCurrentPage model.newsPage token requestNews
             in
             ( { model
                 | request = Success
                 , credentials = { credentials | token = Just token }
                 , alertVisibility = Alert.closed
+                , newsPage = newsPage
               }
             , Cmd.batch
                 [ saveAuth <| encodeAuthResult authResult
-
-                -- TODO Maybe there is no need to request News in there
-                -- , requestNews <|
-                --     encodeNewsRequest
-                --         (toQueryString
-                --             0
-                --             model.newsPage.count
-                --             model.newsPage.type_
-                --         )
-                --         token
+                , httpRequestor
                 ]
             )
 
