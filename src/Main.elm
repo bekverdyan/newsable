@@ -1,24 +1,20 @@
 port module Main exposing (Model, init, main)
 
 import Bootstrap.Alert as Alert
-import Bootstrap.Badge as Badge
 import Bootstrap.Button as Button
 import Bootstrap.Card as Card
 import Bootstrap.Card.Block as Block
 import Bootstrap.Form as Form
-import Bootstrap.Form.Fieldset as Fieldset
 import Bootstrap.Form.Input as Input
 import Bootstrap.Form.InputGroup as InputGroup
 import Bootstrap.Form.Textarea as Textarea
 import Bootstrap.Grid as Grid
 import Bootstrap.Grid.Col as Col
 import Bootstrap.Grid.Row as Row
-import Bootstrap.ListGroup as ListGroup
 import Bootstrap.Navbar as Navbar
 import Bootstrap.Spinner as Spinner
 import Bootstrap.Tab as Tab
 import Bootstrap.Text as Text
-import Bootstrap.Utilities.Flex as Flex
 import Bootstrap.Utilities.Spacing as Spacing
 import Browser
 import Html exposing (..)
@@ -28,6 +24,7 @@ import Http
 import Json.Decode as D
 import Json.Encode as E
 import Loading exposing (LoaderType(..), defaultConfig, render)
+import Page as Page
 
 
 main =
@@ -95,7 +92,8 @@ subscriptions model =
         , createNewsResponse NewsCreationResponse
         , acceptNewsResponse GotAcceptedNews
         , rejectNewsResponse GotRejectedNews
-        , Tab.subscriptions model.tabState TabMsg
+        , Sub.map TabMsg <|
+            Page.subscriptions model.newsPage
         ]
 
 
@@ -125,41 +123,9 @@ type alias Model =
     , navbarState : Navbar.State
     , newsTemplate : CreateNewsTemplate
     , createNewsStatus : CreateNews
-    , selectedNews : Maybe News
-    , newsPage : PageState
+    , newsPage : Page.Model
     , tabState : Tab.State
     }
-
-
-type alias PageState =
-    { start : Int
-    , count : Int
-    , previous : Page
-    , current : Page
-    , next : Page
-    , type_ : NewsType
-    , requestor : NewsRequestor
-    }
-
-
-type NewsRequestor
-    = Start
-    | Previous
-    | Current
-    | Next
-    | NoOne
-
-
-type Page
-    = Empty
-    | ErrorToLoad String
-    | Data (List News)
-
-
-type NewsType
-    = All
-    | Accepted
-    | Rejected
 
 
 type CreateNews
@@ -190,14 +156,6 @@ type Request
     | Success
 
 
-type alias News =
-    { id : Int
-    , title : String
-    , fileId : Int
-    , accepted : Bool
-    }
-
-
 type Reason
     = Unauthorized
     | Other String
@@ -224,15 +182,7 @@ init _ =
         navbarState
         clearNewsFormData
         Ready
-        Nothing
-        { start = 0
-        , count = 15
-        , previous = Empty
-        , current = Empty
-        , next = Empty
-        , type_ = All
-        , requestor = Current
-        }
+        Page.init
         (Tab.customInitialState "allTab")
     , navbarCmd
     )
@@ -269,14 +219,16 @@ handleAuthResponse response model =
               }
             , Cmd.batch
                 [ saveAuth <| encodeAuthResult authResult
-                , requestNews <|
-                    encodeNewsRequest
-                        (toQueryString
-                            0
-                            model.newsPage.count
-                            model.newsPage.type_
-                        )
-                        token
+
+                -- TODO Maybe there is no need to request News in there
+                -- , requestNews <|
+                --     encodeNewsRequest
+                --         (toQueryString
+                --             0
+                --             model.newsPage.count
+                --             model.newsPage.type_
+                --         )
+                --         token
                 ]
             )
 
@@ -333,92 +285,8 @@ handleStatusCode code model =
             ( model, Cmd.none )
 
 
-handleIncomingNews : E.Value -> PageState -> PageState
-handleIncomingNews encoded page =
-    let
-        decoded =
-            D.decodeValue decodeNewsList encoded
-
-        toString : D.Error -> Page
-        toString error =
-            ErrorToLoad <| D.errorToString error
-    in
-    case page.requestor of
-        Start ->
-            case decoded of
-                Ok news ->
-                    { page
-                        | current = Data news
-                        , requestor = NoOne
-                    }
-
-                Err err ->
-                    { page
-                        | current = toString err
-                        , requestor = NoOne
-                    }
-
-        Previous ->
-            case decoded of
-                Ok news ->
-                    { page
-                        | previous = Data news
-                        , requestor = NoOne
-                    }
-
-                Err err ->
-                    { page
-                        | previous = toString err
-                        , requestor = NoOne
-                    }
-
-        Current ->
-            case decoded of
-                Ok news ->
-                    { page
-                        | current = Data news
-                        , requestor = NoOne
-                    }
-
-                Err err ->
-                    { page
-                        | current = toString err
-                        , requestor = NoOne
-                    }
-
-        Next ->
-            case decoded of
-                Ok news ->
-                    { page
-                        | next =
-                            if List.isEmpty news then
-                                Empty
-
-                            else
-                                Data news
-                        , requestor = NoOne
-                    }
-
-                Err err ->
-                    { page
-                        | next = toString err
-                        , requestor = NoOne
-                    }
-
-        NoOne ->
-            page
-
-
 
 -- ENCODE DECODE
-
-
-encodeNewsRequest : String -> String -> E.Value
-encodeNewsRequest query token =
-    E.object
-        [ ( "query", E.string query )
-        , ( "token", E.string token )
-        ]
 
 
 decodeAddNewsResponse : D.Decoder String
@@ -439,34 +307,6 @@ decodeFilm : D.Decoder (Maybe Int)
 decodeFilm =
     D.map List.head
         (D.list (D.field "id" D.int))
-
-
-decodeNewsList : D.Decoder (List News)
-decodeNewsList =
-    D.list decodeNews
-
-
-decodeNews : D.Decoder News
-decodeNews =
-    D.map4 News
-        (D.field "id" D.int)
-        (D.field "title" D.string)
-        (D.field "fileId" D.int)
-        (D.field "accepted" D.bool)
-
-
-encodeNewsList : List News -> E.Value
-encodeNewsList news =
-    E.list encodeNews news
-
-
-encodeNews : News -> E.Value
-encodeNews news =
-    E.object
-        [ ( "id", E.int news.id )
-        , ( "title", E.string news.title )
-        , ( "fileId", E.int news.fileId )
-        ]
 
 
 decodeAuthResult : D.Decoder AuthResult
@@ -507,14 +347,11 @@ type Msg
     | AlertMsg Alert.Visibility
     | LoadAuth E.Value
     | PlayVideo E.Value
-    | Play News
     | GotNews E.Value
     | GotFilm E.Value
-    | RefreshPlaylist
     | NavbarMsg Navbar.State
     | CloseNewsCreator
     | ClearNewsFormData
-    | OpenNewsCreator
     | InputNewsTitle String
     | InputNewsDescription String
     | InputNewsUrl String
@@ -524,13 +361,8 @@ type Msg
     | RejectNews
     | GotAcceptedNews E.Value
     | GotRejectedNews E.Value
-    | ToStartPage
-    | ToPreviousPage
-    | ToNextPage
-    | TabMsg Tab.State
-    | ToAllNewsTab
-    | ToAcceptedNewsTab
-    | ToRejectedNewsTab
+    | PageMsg Page.Msg
+    | TabMsg Page.Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -580,39 +412,38 @@ update msg model =
 
         LoadAuth encoded ->
             let
-                authResult =
-                    D.decodeValue
-                        decodeAuthResult
-                        encoded
+                ( authToken, newsPage, cmd ) =
+                    case
+                        D.decodeValue
+                            decodeAuthResult
+                            encoded
+                    of
+                        Ok auth ->
+                            let
+                                token =
+                                    auth.authToken
 
-                token =
-                    case authResult of
-                        Ok result ->
-                            Just result.authToken
+                                ( page, params ) =
+                                    Page.loadFirstPage model.newsPage token
+                            in
+                            ( Just token
+                            , page
+                            , requestNews <|
+                                params
+                            )
 
                         Err _ ->
-                            Nothing
+                            ( Nothing, model.newsPage, Cmd.none )
 
                 credentials =
                     model.credentials
             in
             ( { model
                 | credentials =
-                    { credentials | token = token }
+                    { credentials | token = authToken }
+                , newsPage = newsPage
               }
-            , case token of
-                Just value ->
-                    requestNews <|
-                        encodeNewsRequest
-                            (toQueryString
-                                0
-                                model.newsPage.count
-                                model.newsPage.type_
-                            )
-                            value
-
-                Nothing ->
-                    Cmd.none
+            , cmd
             )
 
         PlayVideo encoded ->
@@ -636,65 +467,23 @@ update msg model =
             , Cmd.none
             )
 
-        Play news ->
-            ( { model
-                | selectedNews = Just news
-                , editor = LoadingVideo
-              }
-            , case model.credentials.token of
-                Just token ->
-                    filmRequest <|
-                        E.object
-                            [ ( "filmId"
-                              , E.string <|
-                                    String.fromInt news.fileId
-                              )
-                            , ( "token", E.string token )
-                            ]
+        GotNews encoded ->
+            let
+                ( page, value ) =
+                    case model.credentials.token of
+                        Just token ->
+                            Page.handleIncomingNews encoded token model.newsPage
+
+                        Nothing ->
+                            ( model.newsPage, Nothing )
+            in
+            ( { model | newsPage = page }
+            , case value of
+                Just params ->
+                    requestNews params
 
                 Nothing ->
                     Cmd.none
-            )
-
-        GotNews encoded ->
-            let
-                page =
-                    handleIncomingNews encoded model.newsPage
-
-                ( requestor, cmd ) =
-                    case model.credentials.token of
-                        Just token ->
-                            let
-                                process =
-                                    ( Next
-                                    , requestNews <|
-                                        encodeNewsRequest
-                                            (toQueryString
-                                                (page.start + model.newsPage.count)
-                                                model.newsPage.count
-                                                model.newsPage.type_
-                                            )
-                                            token
-                                    )
-                            in
-                            case model.newsPage.requestor of
-                                Current ->
-                                    process
-
-                                Start ->
-                                    process
-
-                                _ ->
-                                    ( NoOne, Cmd.none )
-
-                        Nothing ->
-                            ( NoOne, Cmd.none )
-            in
-            ( { model
-                | newsPage =
-                    { page | requestor = requestor }
-              }
-            , cmd
             )
 
         GotFilm encoded ->
@@ -727,31 +516,6 @@ update msg model =
                     Cmd.none
             )
 
-        RefreshPlaylist ->
-            let
-                page =
-                    model.newsPage
-            in
-            ( { model
-                | newsPage = { page | requestor = Current }
-              }
-            , Cmd.batch
-                [ case model.credentials.token of
-                    Just token ->
-                        requestNews <|
-                            encodeNewsRequest
-                                (toQueryString
-                                    page.start
-                                    page.count
-                                    page.type_
-                                )
-                                token
-
-                    Nothing ->
-                        Cmd.none
-                ]
-            )
-
         NavbarMsg state ->
             ( { model | navbarState = state }, Cmd.none )
 
@@ -765,9 +529,6 @@ update msg model =
               }
             , Cmd.none
             )
-
-        OpenNewsCreator ->
-            ( { model | editor = AddNews }, Cmd.none )
 
         InputNewsTitle title ->
             let
@@ -843,7 +604,7 @@ update msg model =
 
         AcceptNews ->
             ( model
-            , case model.selectedNews of
+            , case model.newsPage.selected of
                 Just news ->
                     case model.credentials.token of
                         Just token ->
@@ -866,7 +627,7 @@ update msg model =
 
         RejectNews ->
             ( model
-            , case model.selectedNews of
+            , case model.newsPage.selected of
                 Just news ->
                     case model.credentials.token of
                         Just token ->
@@ -927,213 +688,61 @@ update msg model =
             in
             ( { model | editor = editor }, Cmd.none )
 
-        ToStartPage ->
-            case model.credentials.token of
-                Just token ->
-                    let
-                        ( page, cmd ) =
-                            toStartPage model.newsPage token
-                    in
-                    ( { model | newsPage = page }, cmd )
-
-                Nothing ->
-                    ( model, Cmd.none )
-
-        ToPreviousPage ->
-            case model.credentials.token of
-                Just token ->
-                    let
-                        ( page, cmd ) =
-                            toPreviousPage model.newsPage token
-                    in
-                    ( { model | newsPage = page }, cmd )
-
-                Nothing ->
-                    ( model, Cmd.none )
-
-        ToNextPage ->
-            case model.credentials.token of
-                Just token ->
-                    let
-                        ( page, cmd ) =
-                            toNextPage model.newsPage token
-                    in
-                    ( { model | newsPage = page }, cmd )
-
-                Nothing ->
-                    ( model, Cmd.none )
-
-        TabMsg state ->
-            ( { model | tabState = state }, Cmd.none )
-
-        ToAllNewsTab ->
+        PageMsg pageMsg ->
+            -- TODO Handle OpenNewsCreator and Play messages here
             let
-                pageOrig =
-                    model.newsPage
+                ( page, pageCmd ) =
+                    Page.update pageMsg
+                        model.newsPage
+                        requestNews
+                        model.credentials.token
 
-                ( page, cmd ) =
-                    case model.credentials.token of
-                        Just token ->
-                            toStartPage { pageOrig | type_ = All } token
+                ( editor, editorCmd ) =
+                    case pageMsg of
+                        Page.Play news ->
+                            case model.credentials.token of
+                                Just token ->
+                                    ( LoadingVideo
+                                    , filmRequest <|
+                                        E.object
+                                            [ ( "filmId"
+                                              , E.string <|
+                                                    String.fromInt news.fileId
+                                              )
+                                            , ( "token", E.string token )
+                                            ]
+                                    )
 
-                        Nothing ->
-                            ( pageOrig, Cmd.none )
+                                Nothing ->
+                                    ( model.editor, Cmd.none )
+
+                        Page.OpenNewsCreator ->
+                            ( AddNews, Cmd.none )
+
+                        _ ->
+                            ( model.editor, Cmd.none )
             in
             ( { model
                 | newsPage = page
-                , tabState = Tab.customInitialState "allTab"
+                , editor = editor
               }
-            , cmd
+            , Cmd.batch [ pageCmd, editorCmd ]
             )
 
-        ToAcceptedNewsTab ->
+        TabMsg tabMsg ->
             let
-                pageOrig =
-                    model.newsPage
-
                 ( page, cmd ) =
-                    case model.credentials.token of
-                        Just token ->
-                            toStartPage { pageOrig | type_ = Accepted } token
-
-                        Nothing ->
-                            ( pageOrig, Cmd.none )
+                    Page.update
+                        tabMsg
+                        model.newsPage
+                        requestNews
+                        model.credentials.token
             in
-            ( { model
-                | newsPage = page
-                , tabState = Tab.customInitialState "acceptedTab"
-              }
-            , cmd
-            )
-
-        ToRejectedNewsTab ->
-            let
-                pageOrig =
-                    model.newsPage
-
-                ( page, cmd ) =
-                    case model.credentials.token of
-                        Just token ->
-                            toStartPage { pageOrig | type_ = Rejected } token
-
-                        Nothing ->
-                            ( pageOrig, Cmd.none )
-            in
-            ( { model
-                | newsPage = page
-                , tabState = Tab.customInitialState "rejectedTab"
-              }
-            , cmd
-            )
+            ( { model | newsPage = page }, cmd )
 
 
 
 -- HELPER
-
-
-toStartPage : PageState -> String -> ( PageState, Cmd Msg )
-toStartPage page token =
-    ( PageState
-        0
-        page.count
-        Empty
-        Empty
-        Empty
-        page.type_
-        Start
-    , requestNews <|
-        encodeNewsRequest
-            (toQueryString
-                0
-                page.count
-                page.type_
-            )
-            token
-    )
-
-
-toPreviousPage : PageState -> String -> ( PageState, Cmd Msg )
-toPreviousPage page token =
-    let
-        ( requestor, cmd ) =
-            case page.previous of
-                Empty ->
-                    ( NoOne, Cmd.none )
-
-                _ ->
-                    ( Previous
-                    , requestNews <|
-                        encodeNewsRequest
-                            (toQueryString
-                                (page.start - (page.count * 2))
-                                page.count
-                                page.type_
-                            )
-                            token
-                    )
-    in
-    ( PageState
-        (page.start - page.count)
-        page.count
-        Empty
-        page.previous
-        page.current
-        page.type_
-        requestor
-    , cmd
-    )
-
-
-toNextPage : PageState -> String -> ( PageState, Cmd Msg )
-toNextPage page token =
-    let
-        ( requestor, cmd ) =
-            case page.next of
-                Empty ->
-                    ( NoOne, Cmd.none )
-
-                _ ->
-                    ( Next
-                    , requestNews <|
-                        encodeNewsRequest
-                            (toQueryString
-                                (page.start + (page.count * 2))
-                                page.count
-                                page.type_
-                            )
-                            token
-                    )
-    in
-    ( PageState
-        (page.start + page.count)
-        page.count
-        page.current
-        page.next
-        Empty
-        page.type_
-        Next
-    , cmd
-    )
-
-
-toQueryString : Int -> Int -> NewsType -> String
-toQueryString start count type_ =
-    "?start="
-        ++ String.fromInt start
-        ++ "&count="
-        ++ String.fromInt count
-        ++ ("&accepted="
-                ++ (case type_ of
-                        Accepted ->
-                            "true"
-
-                        Rejected ->
-                            "false"
-
-                        All ->
-                            "all"
-                   )
-           )
 
 
 clearNewsFormData : CreateNewsTemplate
@@ -1223,307 +832,14 @@ viewAdmin : Model -> Html Msg
 viewAdmin model =
     Grid.container []
         [ Grid.row []
-            [ Grid.col []
-                [ viewDashboard model ]
+            [ Grid.col
+                []
+                [ Html.map PageMsg <|
+                    Page.view model.newsPage
+                ]
             , Grid.col [] [ viewEditor model ]
             ]
         ]
-
-
-viewDashboard : Model -> Html Msg
-viewDashboard model =
-    Card.config
-        [ Card.align Text.alignXsCenter ]
-        |> Card.header []
-            [ div []
-                [ viewRefreshButton model.newsPage.requestor
-                , Button.button
-                    [ Button.primary
-                    , Button.attrs [ Spacing.ml3 ]
-                    , Button.onClick OpenNewsCreator
-                    ]
-                    [ text "Create news" ]
-                ]
-            ]
-        |> Card.block []
-            [ Block.text []
-                [ Tab.config TabMsg
-                    |> Tab.withAnimation
-                    |> Tab.center
-                    |> Tab.items
-                        [ Tab.item
-                            { id = "allTab"
-                            , link =
-                                Tab.link
-                                    [ case model.newsPage.requestor of
-                                        NoOne ->
-                                            onClick ToAllNewsTab
-
-                                        _ ->
-                                            disabled True
-                                    ]
-                                    [ text "All"
-                                    ]
-                            , pane =
-                                Tab.pane []
-                                    [ viewTabContent
-                                        model.newsPage
-                                        model.selectedNews
-                                    ]
-                            }
-                        , Tab.item
-                            { id = "acceptedTab"
-                            , link =
-                                Tab.link
-                                    [ case model.newsPage.requestor of
-                                        NoOne ->
-                                            onClick ToAcceptedNewsTab
-
-                                        _ ->
-                                            disabled True
-                                    ]
-                                    [ text "Accepted" ]
-                            , pane =
-                                Tab.pane []
-                                    [ viewTabContent
-                                        model.newsPage
-                                        model.selectedNews
-                                    ]
-                            }
-                        , Tab.item
-                            { id = "rejectedTab"
-                            , link =
-                                Tab.link
-                                    [ case model.newsPage.requestor of
-                                        NoOne ->
-                                            onClick ToRejectedNewsTab
-
-                                        _ ->
-                                            disabled True
-                                    ]
-                                    [ text "Rejected" ]
-                            , pane =
-                                Tab.pane []
-                                    [ viewTabContent
-                                        model.newsPage
-                                        model.selectedNews
-                                    ]
-                            }
-                        ]
-                    |> Tab.view model.tabState
-                ]
-            ]
-        |> Card.footer []
-            [ div []
-                [ viewStart model.newsPage
-                , viewPrevious model.newsPage
-                , viewNext model.newsPage
-                ]
-            ]
-        |> Card.view
-
-
-viewTabContent : PageState -> Maybe News -> Html Msg
-viewTabContent page selectedNews =
-    case page.requestor of
-        Current ->
-            Spinner.spinner
-                [ Spinner.color Text.dark
-                , Spinner.attrs
-                    [ style "width" "5rem"
-                    , style "height" "5rem"
-                    ]
-                ]
-                []
-
-        Start ->
-            Spinner.spinner
-                [ Spinner.color Text.dark
-                , Spinner.attrs
-                    [ style "width" "5rem"
-                    , style "height" "5rem"
-                    ]
-                ]
-                []
-
-        _ ->
-            case page.current of
-                Empty ->
-                    text ""
-
-                Data newsList ->
-                    let
-                        viewNews : News -> ListGroup.CustomItem Msg
-                        viewNews news =
-                            viewNewsInteractive news selectedNews
-                    in
-                    ListGroup.custom <|
-                        List.map viewNews newsList
-
-                ErrorToLoad msg ->
-                    text msg
-
-
-viewStart : PageState -> Html Msg
-viewStart state =
-    if state.start == 0 then
-        text ""
-
-    else
-        case state.requestor of
-            NoOne ->
-                Button.button
-                    [ Button.roleLink
-                    , Button.onClick ToStartPage
-                    ]
-                    [ text "Start" ]
-
-            Start ->
-                Button.button
-                    [ Button.roleLink
-                    , Button.disabled True
-                    ]
-                    [ Spinner.spinner
-                        [ Spinner.small
-                        , Spinner.color Text.warning
-                        , Spinner.attrs [ Spacing.mr1 ]
-                        ]
-                        []
-                    , text "Loading..."
-                    ]
-
-            _ ->
-                Button.button
-                    [ Button.roleLink
-                    , Button.disabled True
-                    ]
-                    [ text "Start" ]
-
-
-viewPrevious : PageState -> Html Msg
-viewPrevious state =
-    if state.start == 0 then
-        text ""
-
-    else
-        case state.requestor of
-            NoOne ->
-                Button.button
-                    [ Button.roleLink
-                    , Button.onClick ToPreviousPage
-                    ]
-                    [ text "Previous" ]
-
-            Previous ->
-                Button.button
-                    [ Button.roleLink
-                    , Button.disabled True
-                    ]
-                    [ Spinner.spinner
-                        [ Spinner.small
-                        , Spinner.color Text.warning
-                        , Spinner.attrs [ Spacing.mr1 ]
-                        ]
-                        []
-                    , text "Loading..."
-                    ]
-
-            _ ->
-                Button.button
-                    [ Button.roleLink
-                    , Button.disabled True
-                    ]
-                    [ text "Previous" ]
-
-
-viewNext : PageState -> Html Msg
-viewNext state =
-    case state.requestor of
-        NoOne ->
-            case state.next of
-                Data news ->
-                    if List.isEmpty news then
-                        text ""
-
-                    else
-                        Button.button
-                            [ Button.roleLink
-                            , Button.onClick ToNextPage
-                            ]
-                            [ text "Next" ]
-
-                _ ->
-                    text ""
-
-        Next ->
-            Button.button
-                [ Button.roleLink
-                , Button.disabled True
-                ]
-                [ Spinner.spinner
-                    [ Spinner.small
-                    , Spinner.color Text.warning
-                    , Spinner.attrs [ Spacing.mr1 ]
-                    ]
-                    []
-                , text "Loading.."
-                ]
-
-        Start ->
-            Button.button
-                [ Button.roleLink
-                , Button.disabled True
-                ]
-                [ Spinner.spinner
-                    [ Spinner.small
-                    , Spinner.color Text.warning
-                    , Spinner.attrs [ Spacing.mr1 ]
-                    ]
-                    []
-                , text "Loading.."
-                ]
-
-        _ ->
-            Button.button
-                [ Button.roleLink
-                , Button.disabled True
-                ]
-                [ text "Next" ]
-
-
-viewRefreshButton : NewsRequestor -> Html Msg
-viewRefreshButton requestor =
-    case requestor of
-        NoOne ->
-            Button.button
-                [ Button.primary
-                , Button.attrs [ Spacing.mr3 ]
-                , Button.onClick RefreshPlaylist
-                ]
-                [ text "Refresh" ]
-
-        Current ->
-            Button.button
-                [ Button.primary
-                , Button.disabled True
-                , Button.attrs [ Spacing.mr3 ]
-                ]
-                [ Spinner.spinner
-                    [ Spinner.small
-                    , Spinner.color Text.warning
-                    , Spinner.attrs [ Spacing.mr1 ]
-                    ]
-                    []
-                , text "Loading..."
-                ]
-
-        _ ->
-            Button.button
-                [ Button.primary
-                , Button.attrs [ Spacing.mr3 ]
-                , Button.disabled True
-                ]
-                [ text "Refresh" ]
 
 
 viewEditor : Model -> Html Msg
@@ -1547,7 +863,7 @@ viewEditor model =
             Card.config [ Card.attrs [ width 20 ] ]
                 |> Card.header [ class "text-center" ]
                     [ h4 []
-                        [ case model.selectedNews of
+                        [ case model.newsPage.selected of
                             Just news ->
                                 text news.title
 
@@ -1573,7 +889,7 @@ viewEditor model =
         PlayingVideo url ->
             let
                 ( video, actions ) =
-                    videoPlayer url model.selectedNews
+                    videoPlayer url model.newsPage.selected
             in
             Card.config
                 [ Card.align Text.alignXsCenter
@@ -1581,7 +897,7 @@ viewEditor model =
                 ]
                 |> Card.header [ class "text-center" ]
                     [ h4 []
-                        [ case model.selectedNews of
+                        [ case model.newsPage.selected of
                             Just news ->
                                 text news.title
 
@@ -1612,7 +928,7 @@ viewEditor model =
                 |> Card.view
 
 
-videoPlayer : String -> Maybe News -> ( Html Msg, Html Msg )
+videoPlayer : String -> Maybe Page.News -> ( Html Msg, Html Msg )
 videoPlayer url value =
     let
         actionButton : String -> Msg -> Button.Option Msg -> Attribute Msg -> Html Msg
@@ -1651,40 +967,6 @@ videoPlayer url value =
         , actionButton "Reject" RejectNews Button.danger Spacing.ml3
         ]
     )
-
-
-viewNewsInteractive : News -> Maybe News -> ListGroup.CustomItem Msg
-viewNewsInteractive news selectedNews =
-    let
-        itemStyle =
-            case selectedNews of
-                Just value ->
-                    if value.id == news.id then
-                        ListGroup.warning
-
-                    else
-                        ListGroup.secondary
-
-                Nothing ->
-                    ListGroup.secondary
-
-        badge =
-            if news.accepted then
-                Badge.badgeSuccess [] [ text "Accepted" ]
-
-            else
-                Badge.badgeDanger [] [ text "Rejected" ]
-    in
-    ListGroup.button
-        [ itemStyle
-        , ListGroup.attrs
-            [ onClick (Play news)
-            , Flex.block
-            , Flex.justifyBetween
-            , Flex.alignItemsCenter
-            ]
-        ]
-        [ text news.title, badge ]
 
 
 viewSignIn : Model -> Html Msg
