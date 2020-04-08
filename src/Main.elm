@@ -123,7 +123,7 @@ type alias Model =
     , navbarState : Navbar.State
     , newsTemplate : CreateNewsTemplate
     , createNewsStatus : CreateNews
-    , newsPage : Page.State
+    , newsPage : Page.Model
     , tabState : Tab.State
     }
 

@@ -1,7 +1,7 @@
 module Page exposing
-    ( Msg(..)
+    ( Model
+    , Msg(..)
     , News
-    , State
     , handleIncomingNews
     , init
     , loadFirstPage
@@ -38,7 +38,7 @@ import Json.Encode as E
 -- MODEL
 
 
-type alias State =
+type alias Model =
     { start : Int
     , count : Int
     , previous : Page
@@ -79,7 +79,7 @@ type alias News =
     }
 
 
-init : State
+init : Model
 init =
     { start = 0
     , count = 15
@@ -93,13 +93,13 @@ init =
     }
 
 
-handleIncomingNews : E.Value -> String -> State -> ( State, Maybe E.Value )
-handleIncomingNews encoded token pageOrig =
-    case pageOrig.requestor of
+handleIncomingNews : E.Value -> String -> Model -> ( Model, Maybe E.Value )
+handleIncomingNews encoded token model =
+    case model.requestor of
         Current ->
             let
                 page =
-                    applyNews encoded pageOrig
+                    applyNews encoded model
             in
             ( { page | requestor = Next }
             , Just
@@ -116,7 +116,7 @@ handleIncomingNews encoded token pageOrig =
         Start ->
             let
                 page =
-                    applyNews encoded pageOrig
+                    applyNews encoded model
             in
             ( { page | requestor = Next }
             , Just
@@ -131,7 +131,7 @@ handleIncomingNews encoded token pageOrig =
             )
 
         _ ->
-            ( applyNews encoded pageOrig, Nothing )
+            ( applyNews encoded model, Nothing )
 
 
 toQueryString : Int -> Int -> Type -> String
@@ -162,8 +162,8 @@ encodeHttpRequest query token =
         ]
 
 
-applyNews : E.Value -> State -> State
-applyNews encoded page =
+applyNews : E.Value -> Model -> Model
+applyNews encoded model =
     let
         decoded =
             D.decodeValue decodeNewsList encoded
@@ -172,17 +172,17 @@ applyNews encoded page =
         toString error =
             Error <| D.errorToString error
     in
-    case page.requestor of
+    case model.requestor of
         Start ->
             case decoded of
                 Ok news ->
-                    { page
+                    { model
                         | current = Data news
                         , requestor = NoOne
                     }
 
                 Err err ->
-                    { page
+                    { model
                         | current = toString err
                         , requestor = NoOne
                     }
@@ -190,13 +190,13 @@ applyNews encoded page =
         Previous ->
             case decoded of
                 Ok news ->
-                    { page
+                    { model
                         | previous = Data news
                         , requestor = NoOne
                     }
 
                 Err err ->
-                    { page
+                    { model
                         | previous = toString err
                         , requestor = NoOne
                     }
@@ -204,13 +204,13 @@ applyNews encoded page =
         Current ->
             case decoded of
                 Ok news ->
-                    { page
+                    { model
                         | current = Data news
                         , requestor = NoOne
                     }
 
                 Err err ->
-                    { page
+                    { model
                         | current = toString err
                         , requestor = NoOne
                     }
@@ -218,7 +218,7 @@ applyNews encoded page =
         Next ->
             case decoded of
                 Ok news ->
-                    { page
+                    { model
                         | next =
                             if List.isEmpty news then
                                 Empty
@@ -229,13 +229,13 @@ applyNews encoded page =
                     }
 
                 Err err ->
-                    { page
+                    { model
                         | next = toString err
                         , requestor = NoOne
                     }
 
         NoOne ->
-            page
+            model
 
 
 decodeNewsList : D.Decoder (List News)
@@ -252,34 +252,34 @@ decodeNews =
         (D.field "accepted" D.bool)
 
 
-loadFirstPage : State -> String -> ( State, E.Value )
-loadFirstPage state token =
-    ( { state | start = 0, requestor = Start }
+loadFirstPage : Model -> String -> ( Model, E.Value )
+loadFirstPage model token =
+    ( { model | start = 0, requestor = Start }
     , encodeHttpRequest
         (toQueryString
             0
-            state.count
-            state.type_
+            model.count
+            model.type_
         )
         token
     )
 
 
-refreshCurrentPage : State -> String -> (E.Value -> Cmd msg) -> ( State, Cmd msg )
-refreshCurrentPage state token requestNews =
-    ( { state | requestor = Current }
+refreshCurrentPage : Model -> String -> (E.Value -> Cmd msg) -> ( Model, Cmd msg )
+refreshCurrentPage model token requestNews =
+    ( { model | requestor = Current }
     , requestNews <|
         encodeHttpRequest
             (toQueryString
-                state.start
-                state.count
-                state.type_
+                model.start
+                model.count
+                model.type_
             )
             token
     )
 
 
-toAllNewsTab : State -> String -> (E.Value -> Cmd msg) -> ( State, Cmd msg )
+toAllNewsTab : Model -> String -> (E.Value -> Cmd msg) -> ( Model, Cmd msg )
 toAllNewsTab model token requestNews =
     toStartPage
         { model
@@ -290,10 +290,10 @@ toAllNewsTab model token requestNews =
         requestNews
 
 
-toAcceptedNewsTab : State -> String -> (E.Value -> Cmd msg) -> ( State, Cmd msg )
-toAcceptedNewsTab state token requestNews =
+toAcceptedNewsTab : Model -> String -> (E.Value -> Cmd msg) -> ( Model, Cmd msg )
+toAcceptedNewsTab model token requestNews =
     toStartPage
-        { state
+        { model
             | type_ = Accepted
             , tabState = Tab.customInitialState "acceptedTab"
         }
@@ -301,10 +301,10 @@ toAcceptedNewsTab state token requestNews =
         requestNews
 
 
-toRejectedNewsTab : State -> String -> (E.Value -> Cmd msg) -> ( State, Cmd msg )
-toRejectedNewsTab state token requestNews =
+toRejectedNewsTab : Model -> String -> (E.Value -> Cmd msg) -> ( Model, Cmd msg )
+toRejectedNewsTab model token requestNews =
     toStartPage
-        { state
+        { model
             | type_ = Rejected
             , tabState = Tab.customInitialState "rejectedTab"
         }
@@ -312,34 +312,34 @@ toRejectedNewsTab state token requestNews =
         requestNews
 
 
-toStartPage : State -> String -> (E.Value -> Cmd msg) -> ( State, Cmd msg )
-toStartPage state token requestNews =
-    ( State
+toStartPage : Model -> String -> (E.Value -> Cmd msg) -> ( Model, Cmd msg )
+toStartPage model token requestNews =
+    ( Model
         0
-        state.count
+        model.count
         Empty
         Empty
         Empty
-        state.type_
+        model.type_
         Start
-        state.selected
-        state.tabState
+        model.selected
+        model.tabState
     , requestNews <|
         encodeHttpRequest
             (toQueryString
                 0
-                state.count
-                state.type_
+                model.count
+                model.type_
             )
             token
     )
 
 
-toPreviousPage : State -> String -> (E.Value -> Cmd msg) -> ( State, Cmd msg )
-toPreviousPage state token requestNews =
+toPreviousPage : Model -> String -> (E.Value -> Cmd msg) -> ( Model, Cmd msg )
+toPreviousPage model token requestNews =
     let
         ( requestor, cmd ) =
-            case state.previous of
+            case model.previous of
                 Empty ->
                     ( NoOne, Cmd.none )
 
@@ -348,32 +348,32 @@ toPreviousPage state token requestNews =
                     , requestNews <|
                         encodeHttpRequest
                             (toQueryString
-                                (state.start - (state.count * 2))
-                                state.count
-                                state.type_
+                                (model.start - (model.count * 2))
+                                model.count
+                                model.type_
                             )
                             token
                     )
     in
-    ( State
-        (state.start - state.count)
-        state.count
+    ( Model
+        (model.start - model.count)
+        model.count
         Empty
-        state.previous
-        state.current
-        state.type_
+        model.previous
+        model.current
+        model.type_
         requestor
-        state.selected
-        state.tabState
+        model.selected
+        model.tabState
     , cmd
     )
 
 
-toNextPage : State -> String -> (E.Value -> Cmd msg) -> ( State, Cmd msg )
-toNextPage state token requestNews =
+toNextPage : Model -> String -> (E.Value -> Cmd msg) -> ( Model, Cmd msg )
+toNextPage model token requestNews =
     let
         ( requestor, cmd ) =
-            case state.next of
+            case model.next of
                 Empty ->
                     ( NoOne, Cmd.none )
 
@@ -382,25 +382,25 @@ toNextPage state token requestNews =
                     , requestNews <|
                         encodeHttpRequest
                             (toQueryString
-                                (state.start
-                                    + (state.count * 2)
+                                (model.start
+                                    + (model.count * 2)
                                 )
-                                state.count
-                                state.type_
+                                model.count
+                                model.type_
                             )
                             token
                     )
     in
-    ( State
-        (state.start + state.count)
-        state.count
-        state.current
-        state.next
+    ( Model
+        (model.start + model.count)
+        model.count
+        model.current
+        model.next
         Empty
-        state.type_
+        model.type_
         Next
-        state.selected
-        state.tabState
+        model.selected
+        model.tabState
     , cmd
     )
 
@@ -424,10 +424,10 @@ type Msg
 
 update :
     Msg
-    -> State
+    -> Model
     -> (E.Value -> Cmd msg)
     -> Maybe String
-    -> ( State, Cmd msg )
+    -> ( Model, Cmd msg )
 update message model requestNews auth =
     case message of
         RefreshPlaylist ->
@@ -503,7 +503,7 @@ update message model requestNews auth =
 -- VIEW
 
 
-view : State -> Html Msg
+view : Model -> Html Msg
 view model =
     Card.config
         [ Card.align Text.alignXsCenter ]
@@ -628,7 +628,7 @@ viewRefreshButton requestor =
                 [ text "Refresh" ]
 
 
-viewTabContent : State -> Html Msg
+viewTabContent : Model -> Html Msg
 viewTabContent model =
     case model.requestor of
         Current ->
@@ -703,13 +703,13 @@ viewNewsInteractive news selectedNews =
         [ text news.title, badge ]
 
 
-viewStart : State -> Html Msg
-viewStart state =
-    if state.start == 0 then
+viewStart : Model -> Html Msg
+viewStart model =
+    if model.start == 0 then
         text ""
 
     else
-        case state.requestor of
+        case model.requestor of
             NoOne ->
                 Button.button
                     [ Button.roleLink
@@ -739,13 +739,13 @@ viewStart state =
                     [ text "Start" ]
 
 
-viewPrevious : State -> Html Msg
-viewPrevious state =
-    if state.start == 0 then
+viewPrevious : Model -> Html Msg
+viewPrevious model =
+    if model.start == 0 then
         text ""
 
     else
-        case state.requestor of
+        case model.requestor of
             NoOne ->
                 Button.button
                     [ Button.roleLink
@@ -775,11 +775,11 @@ viewPrevious state =
                     [ text "Previous" ]
 
 
-viewNext : State -> Html Msg
-viewNext state =
-    case state.requestor of
+viewNext : Model -> Html Msg
+viewNext model =
+    case model.requestor of
         NoOne ->
-            case state.next of
+            case model.next of
                 Data news ->
                     if List.isEmpty news then
                         text ""
@@ -834,6 +834,6 @@ viewNext state =
 -- SUBSCRIPTIONS
 
 
-subscriptions : State -> Sub Msg
+subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch [ Tab.subscriptions model.tabState TabMsg ]
