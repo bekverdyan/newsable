@@ -92,7 +92,7 @@ subscriptions model =
         , createNewsResponse NewsCreationResponse
         , acceptNewsResponse GotAcceptedNews
         , rejectNewsResponse GotRejectedNews
-        , Sub.map TabMsg <|
+        , Sub.map PageMsg <|
             Page.subscriptions model.newsPage
         ]
 
@@ -355,7 +355,6 @@ type Msg
     | GotAcceptedNews E.Value
     | GotRejectedNews E.Value
     | PageMsg Page.Msg
-    | TabMsg Page.Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -682,7 +681,6 @@ update msg model =
             ( { model | editor = editor }, Cmd.none )
 
         PageMsg pageMsg ->
-            -- TODO Handle OpenNewsCreator and Play messages here
             let
                 ( page, pageCmd ) =
                     Page.update pageMsg
@@ -721,17 +719,6 @@ update msg model =
               }
             , Cmd.batch [ pageCmd, editorCmd ]
             )
-
-        TabMsg tabMsg ->
-            let
-                ( page, cmd ) =
-                    Page.update
-                        tabMsg
-                        model.newsPage
-                        requestNews
-                        model.credentials.token
-            in
-            ( { model | newsPage = page }, cmd )
 
 
 
